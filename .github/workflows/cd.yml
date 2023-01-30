@@ -39,7 +39,7 @@ jobs:
       shell: bash
       run: |
         cp target/release/mrpack-downloader${{ matrix.extension }} target/release/mrpack-downloader-${{ matrix.os_suffix }}
-        sha256sum -a 256 target/release/mrpack-downloader${{ matrix.extension }} > mrpack-downloader-${{ matrix.os_suffix }}.sha256
+        sha256sum target/release/mrpack-downloader${{ matrix.extension }} > mrpack-downloader-${{ matrix.os_suffix }}.sha256
     - name: Release
       uses: softprops/action-gh-release@v1
       with:
