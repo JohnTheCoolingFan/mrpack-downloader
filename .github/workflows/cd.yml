@@ -9,7 +9,17 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [ununtu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            os_suffix: linux
+            extension: ""
+          - os: windows-latest
+            os_suffix: win.exe
+            extension: .exe
+          - os: macos-latest
+            os_suffix: macos
+            extension: ""
         
     runs-on: ${{ matrix.os }}
 
@@ -28,10 +38,11 @@ jobs:
     - name: Generate hashes
       shell: bash
       run: |
-        shasum -a 256 target/release/mrpack-downloader > mrpack-downloader.sha256
+        cp target/release/mrpack-downloader${{ matrix.extension }} target/release/mrpack-downloader-${{ matrix.os_suffix }}
+        sha256sum -a 256 target/release/mrpack-downloader${{ matrix.extension }} > mrpack-downloader-${{ matrix.os_suffix }}.sha256
     - name: Release
       uses: softprops/action-gh-release@v1
       with:
         files: |
-          target/release/mrpack-downloader
-          mrpack-downloader.sha256
+          target/release/mrpack-downloader-${{ matrix.os_suffix }}
+          mrpack-downloader-${{ matrix.os_suffix }}.sha256$
