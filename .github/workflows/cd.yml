@@ -9,7 +9,7 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, windows-latest]
         include:
           - os: ubuntu-latest
             os_suffix: linux
@@ -17,9 +17,6 @@ jobs:
           - os: windows-latest
             os_suffix: win.exe
             extension: .exe
-          - os: macos-latest
-            os_suffix: macos
-            extension: ""
         
     runs-on: ${{ matrix.os }}
 
