@@ -45,4 +45,4 @@ jobs:
       with:
         files: |
           target/release/mrpack-downloader-${{ matrix.os_suffix }}
-          mrpack-downloader-${{ matrix.os_suffix }}.sha256$
+          mrpack-downloader-${{ matrix.os_suffix }}.sha256
