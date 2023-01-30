@@ -1,0 +1,37 @@
+name: deploy
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ununtu-latest, windows-latest, macos-latest]
+        
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Install toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        default: true
+    - name: Build
+      uses: actions-rs/cargo@v1.0.1
+      with:
+        command: build
+        args: --release
+    - name: Generate hashes
+      shell: bash
+      run: |
+        shasum -a 256 target/release/mrpack-downloader > mrpack-downloader.sha256
+    - name: Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          target/release/mrpack-downloader
+          mrpack-downloader.sha256
