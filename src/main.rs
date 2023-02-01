@@ -30,6 +30,7 @@ const ALLOWED_HOSTS: [&str; 4] = [
 struct CliParameters {
     input_file: PathBuf,
     output_dir: PathBuf,
+    /// Download the modpack as server version. Currently does nothing.
     #[arg(short, long)]
     server: bool,
 }
@@ -136,13 +137,13 @@ fn sanitize_segment(segment: &&str) -> bool {
     !matches!(*segment, ".." | "")
 }
 
-async fn extract_overrides(zip: &mut ZipFileReader, output_dir: &Path) {
+async fn extract_folder(zip: &mut ZipFileReader, name: &str, output_dir: &Path) {
     for (i, entry) in zip.file().entries().iter().enumerate() {
         let entry = entry.entry();
-        if entry.filename().starts_with("overrides/") {
+        if entry.filename().starts_with(&format!("{name}/")) {
             println!("Extracting {}", entry.filename());
             let zip_path =
-                sanitize_zip_filename(entry.filename().strip_prefix("overrides/").unwrap());
+                sanitize_zip_filename(entry.filename().strip_prefix(&format!("{name}/")).unwrap());
             let zip_path = output_dir.join(zip_path);
             sanitize_path(&zip_path, output_dir);
             let mut entry_reader = zip.entry(i).await.unwrap();
@@ -248,5 +249,7 @@ async fn main() {
     download_files(&modrinth_index_data, &target_path).await;
 
     println!("Extracting overrides");
-    extract_overrides(&mut zip_file, &target_path).await
+    extract_folder(&mut zip_file, "overrides", &target_path).await;
+    extract_folder(&mut zip_file, "overrides-client", &target_path).await;
+    extract_folder(&mut zip_file, "overrides-server", &target_path).await;
 }
