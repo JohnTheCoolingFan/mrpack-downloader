@@ -2,6 +2,7 @@ use async_zip::read::fs::ZipFileReader;
 use clap::Parser;
 use futures_util::stream::StreamExt;
 use indicatif::{MultiProgress, ProgressBar, ProgressDrawTarget, ProgressStyle};
+use prompts::{confirm::ConfirmPrompt, Prompt};
 use reqwest::Client;
 use semver::Version;
 use serde::Deserialize;
@@ -12,6 +13,7 @@ use std::{
     iter::Iterator,
     path::{Path, PathBuf},
 };
+use strum::AsRefStr;
 use tokio::{
     fs::{create_dir_all, File},
     io::AsyncWriteExt,
@@ -74,7 +76,7 @@ enum EnvRequirement {
     Unsupported,
 }
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Deserialize, AsRefStr)]
 enum ModpackDependencyId {
     #[serde(rename = "minecraft")]
     Minecraft,
@@ -220,6 +222,17 @@ async fn download_file(
     Ok(())
 }
 
+fn print_info(index_data: &ModrinthIndex) {
+    println!("{} version {}", index_data.name, index_data.version_id);
+    if let Some(summary) = &index_data.summary {
+        println!("\n{summary}");
+    }
+    println!("\nDependencies:");
+    for (dep_id, dep_ver) in &index_data.dependencies {
+        println!("{}: {}", dep_id.as_ref(), dep_ver);
+    }
+}
+
 #[tokio::main]
 async fn main() {
     let mut parameters = CliParameters::parse();
@@ -228,7 +241,6 @@ async fn main() {
         .await
         .unwrap();
 
-    println!("Reading index data");
     let mut index_data: Vec<u8> = Vec::new();
     get_index_data(&mut index_data, &mut zip_file)
         .await
@@ -244,6 +256,18 @@ async fn main() {
     }
 
     let target_path = parameters.output_dir.canonicalize().unwrap();
+
+    print_info(&modrinth_index_data);
+
+    match ConfirmPrompt::new("Proceed?")
+        .set_initial(true)
+        .run()
+        .await
+        .unwrap()
+    {
+        Some(false) | None => return,
+        _ => (),
+    }
 
     println!("Downloading files");
     download_files(&modrinth_index_data, &target_path).await;
