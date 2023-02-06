@@ -1,0 +1,23 @@
+# Update license year
+
+name: Update license year
+
+# Controls when the workflow will run
+on:
+  schedule:
+    - cron: '0 3 1 1 *' # 03:00 AM on January 1
+  
+  workflow_dispatch:
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  # This workflow contains a single job called "build"
+  update-license-year:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - uses: FantasticFiasco/action-update-license-year@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
