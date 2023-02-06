@@ -883,7 +883,7 @@ dependencies = [
 
 [[package]]
 name = "mrpack-downloader"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "async_zip",
  "clap",
