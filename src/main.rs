@@ -1,3 +1,11 @@
+use std::{
+    cmp::min,
+    collections::HashMap,
+    error::Error,
+    iter::Iterator,
+    path::{Path, PathBuf},
+};
+
 use async_zip::read::fs::ZipFileReader;
 use clap::Parser;
 use futures_util::stream::StreamExt;
@@ -6,13 +14,6 @@ use prompts::{confirm::ConfirmPrompt, Prompt};
 use reqwest::Client;
 use semver::Version;
 use serde::Deserialize;
-use std::{
-    cmp::min,
-    collections::HashMap,
-    error::Error,
-    iter::Iterator,
-    path::{Path, PathBuf},
-};
 use strum::AsRefStr;
 use tokio::{
     fs::{create_dir_all, File},
@@ -38,11 +39,10 @@ struct CliParameters {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct ModrinthIndex {
-    #[serde(rename = "formatVersion")]
     format_version: u32,
     game: String,
-    #[serde(rename = "versionId")]
     version_id: String,
     name: String,
     summary: Option<String>,
@@ -51,12 +51,12 @@ struct ModrinthIndex {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct ModpackFile {
     path: PathBuf,
     hashes: HashMap<String, String>,
     env: Option<FileEnv>,
     downloads: Vec<Url>,
-    #[serde(rename = "fileSize")]
     file_size: u32,
 }
 
@@ -67,24 +67,19 @@ struct FileEnv {
 }
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 enum EnvRequirement {
-    #[serde(rename = "required")]
     Required,
-    #[serde(rename = "optional")]
     Optional,
-    #[serde(rename = "unsupported")]
     Unsupported,
 }
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Deserialize, AsRefStr)]
+#[serde(rename_all = "kebab-case")]
 enum ModpackDependencyId {
-    #[serde(rename = "minecraft")]
     Minecraft,
-    #[serde(rename = "forge")]
     Forge,
-    #[serde(rename = "fabric-loader")]
     FabricLoader,
-    #[serde(rename = "quilt-loader")]
     QuiltLoader,
 }
 
