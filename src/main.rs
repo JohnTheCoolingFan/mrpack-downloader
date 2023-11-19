@@ -3,11 +3,13 @@ use std::{
     error::Error,
     iter::Iterator,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use async_zip::read::fs::ZipFileReader;
 use clap::Parser;
-use futures_util::stream::StreamExt;
+use deadqueue::limited::Queue as LimitedQueue;
+use futures_util::{future::join_all, stream::StreamExt};
 use indicatif::{MultiProgress, ProgressBar, ProgressDrawTarget, ProgressStyle};
 use prompts::{confirm::ConfirmPrompt, Prompt};
 use reqwest::Client;
@@ -15,6 +17,7 @@ use schemas::ModrinthIndex;
 use tokio::{
     fs::{create_dir_all, File},
     io::AsyncWriteExt,
+    sync::Mutex,
 };
 use url::Url;
 
@@ -119,12 +122,34 @@ async fn extract_folder(zip: &mut ZipFileReader, name: &str, output_dir: &Path) 
 async fn download_files(index: ModrinthIndex, output_dir: &Path) {
     let mpb = MultiProgress::with_draw_target(ProgressDrawTarget::stdout());
     let client = Client::new();
-    for file in index.files {
-        let path = output_dir.join(&file.path);
-        sanitize_path(&path, output_dir);
-        if let Err(why) = download_file(client.clone(), file.downloads, path, mpb.clone()).await {
-            eprintln!("Failed to download: {why}");
-        }
+    let files_stream = Arc::new(Mutex::new(futures::stream::iter(index.files)));
+    let mut handles = Vec::with_capacity(5);
+    for _ in 0..5 {
+        let stream_cloned = Arc::clone(&files_stream);
+        let client_clone = client.clone();
+        let mpb_clone = mpb.clone();
+        let path_clone = output_dir.to_path_buf();
+        handles.push(tokio::spawn(async move {
+            while let Some(file) = {
+                let mut lock = stream_cloned.lock().await;
+                lock.next().await
+            } {
+                let client_clone = client_clone.clone();
+                let mpb_clone = mpb_clone.clone();
+                let path_clone = path_clone.clone();
+                let path = path_clone.join(&file.path);
+                sanitize_path(&path, &path_clone);
+                if let Err(why) =
+                    download_file(client_clone, file.downloads, path_clone, mpb_clone).await
+                {
+                    eprintln!("Failed to download: {why}");
+                }
+            }
+        }))
+    }
+
+    for res in tokio::join!(join_all(handles)).0 {
+        res.unwrap()
     }
 }
 
