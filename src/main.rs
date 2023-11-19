@@ -116,13 +116,13 @@ async fn extract_folder(zip: &mut ZipFileReader, name: &str, output_dir: &Path) 
     }
 }
 
-async fn download_files(index: &ModrinthIndex, output_dir: &Path) {
+async fn download_files(index: ModrinthIndex, output_dir: &Path) {
     let mpb = MultiProgress::with_draw_target(ProgressDrawTarget::stdout());
     let client = Client::new();
-    for file in &index.files {
+    for file in index.files {
         let path = output_dir.join(&file.path);
         sanitize_path(&path, output_dir);
-        if let Err(why) = download_file(&client, &file.downloads, &path, &mpb).await {
+        if let Err(why) = download_file(client.clone(), file.downloads, path, mpb.clone()).await {
             eprintln!("Failed to download: {why}");
         }
     }
@@ -162,10 +162,10 @@ async fn try_download_file(
 }
 
 async fn download_file(
-    client: &Client,
-    urls: &[Url],
-    path: &Path,
-    progress_bars: &MultiProgress,
+    client: Client,
+    urls: Vec<Url>,
+    path: PathBuf,
+    progress_bars: MultiProgress,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     let pb = progress_bars.add(
         ProgressBar::with_draw_target(None, ProgressDrawTarget::stdout())
@@ -182,7 +182,7 @@ async fn download_file(
     }
 
     for url in urls {
-        match try_download_file(client, url, path, &pb).await {
+        match try_download_file(&client, &url, &path, &pb).await {
             Ok(()) => {
                 pb.finish_with_message(format!(
                     "Downloaded {} from {}",
@@ -253,7 +253,7 @@ async fn main() {
     }
 
     println!("Downloading files");
-    download_files(&modrinth_index_data, &target_path).await;
+    download_files(modrinth_index_data, &target_path).await;
 
     println!("Extracting overrides");
     extract_folder(&mut zip_file, "overrides", &target_path).await;
