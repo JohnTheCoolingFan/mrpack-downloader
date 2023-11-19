@@ -8,7 +8,6 @@ use std::{
 
 use async_zip::read::fs::ZipFileReader;
 use clap::Parser;
-use deadqueue::limited::Queue as LimitedQueue;
 use futures_util::{future::join_all, stream::StreamExt};
 use indicatif::{MultiProgress, ProgressBar, ProgressDrawTarget, ProgressStyle};
 use prompts::{confirm::ConfirmPrompt, Prompt};
