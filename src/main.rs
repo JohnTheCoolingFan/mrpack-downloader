@@ -236,7 +236,7 @@ async fn main() {
                 &url.domain()
                     .expect("IP addresses are not allowed in download URLs"),
             ) {
-                panic!("Downloading from {} is not allowed.", url.domain().unwrap());
+                panic!("Downloading from {} is not allowed. See https://docs.modrinth.com/modpacks/format#downloads", url.domain().unwrap());
             }
         }
     }
