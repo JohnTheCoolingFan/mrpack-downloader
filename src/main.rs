@@ -1,6 +1,5 @@
 use std::{
     cmp::min,
-    collections::HashMap,
     error::Error,
     iter::Iterator,
     path::{Path, PathBuf},
@@ -12,14 +11,14 @@ use futures_util::stream::StreamExt;
 use indicatif::{MultiProgress, ProgressBar, ProgressDrawTarget, ProgressStyle};
 use prompts::{confirm::ConfirmPrompt, Prompt};
 use reqwest::Client;
-use semver::Version;
-use serde::Deserialize;
-use strum::AsRefStr;
+use schemas::ModrinthIndex;
 use tokio::{
     fs::{create_dir_all, File},
     io::AsyncWriteExt,
 };
 use url::Url;
+
+mod schemas;
 
 const ALLOWED_HOSTS: [&str; 4] = [
     "cdn.modrinth.com",
@@ -36,51 +35,6 @@ struct CliParameters {
     /// Download the modpack as server version. Currently does nothing.
     #[arg(short, long)]
     server: bool,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ModrinthIndex {
-    format_version: u32,
-    game: String,
-    version_id: String,
-    name: String,
-    summary: Option<String>,
-    files: Vec<ModpackFile>,
-    dependencies: HashMap<ModpackDependencyId, Version>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ModpackFile {
-    path: PathBuf,
-    hashes: HashMap<String, String>,
-    env: Option<FileEnv>,
-    downloads: Vec<Url>,
-    file_size: u32,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct FileEnv {
-    client: EnvRequirement,
-    server: EnvRequirement,
-}
-
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-enum EnvRequirement {
-    Required,
-    Optional,
-    Unsupported,
-}
-
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Deserialize, AsRefStr)]
-#[serde(rename_all = "kebab-case")]
-enum ModpackDependencyId {
-    Minecraft,
-    Forge,
-    FabricLoader,
-    QuiltLoader,
 }
 
 async fn get_index_data(
@@ -126,11 +80,11 @@ fn sanitize_zip_filename(filename: &str) -> PathBuf {
     filename
         .replace('\\', "/")
         .split('/')
-        .filter(sanitize_segment)
+        .filter(needs_sanitization)
         .collect()
 }
 
-fn sanitize_segment(segment: &&str) -> bool {
+fn needs_sanitization(segment: &&str) -> bool {
     !matches!(*segment, ".." | "")
 }
 
@@ -168,24 +122,54 @@ async fn download_files(index: &ModrinthIndex, output_dir: &Path) {
     for file in &index.files {
         let path = output_dir.join(&file.path);
         sanitize_path(&path, output_dir);
-        if let Err(why) = download_file(&client, &file.downloads[0], &path, &mpb).await {
-            println!("Failed to download: {why}");
+        if let Err(why) = download_file(&client, &file.downloads, &path, &mpb).await {
+            eprintln!("Failed to download: {why}");
         }
+    }
+}
+
+async fn try_download_file(
+    client: &Client,
+    url: &Url,
+    path: &Path,
+    bar: &ProgressBar,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let res = client.get(url.clone()).send().await?;
+    if res.status().is_success() {
+        let total_size = res.content_length().unwrap();
+        bar.set_length(total_size);
+
+        let mut out_file = File::create(path).await?;
+        let mut downloaded: u64 = 0;
+        let mut stream = res.bytes_stream();
+
+        while let Some(item) = stream.next().await {
+            let chunk = item?;
+            out_file.write_all(&chunk).await?;
+            let new = min(downloaded + (chunk.len() as u64), total_size);
+            downloaded = new;
+            bar.set_position(new);
+        }
+        todo!()
+    } else {
+        Err(format!(
+            "Unexpected status code from {url}: {}; message: {}",
+            res.status(),
+            res.text().await?
+        )
+        .into())
     }
 }
 
 async fn download_file(
     client: &Client,
-    url: &Url,
+    urls: &[Url],
     path: &Path,
     progress_bars: &MultiProgress,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
-    let res = client.get(url.clone()).send().await?;
-    let total_size = res.content_length().unwrap();
-
     let pb = progress_bars.add(
-        ProgressBar::with_draw_target(Some(total_size), ProgressDrawTarget::stdout())
-            .with_message(format!("Downloading {url}"))
+        ProgressBar::with_draw_target(None, ProgressDrawTarget::stdout())
+            .with_message(format!("Downloading {}", path.to_str().unwrap_or("[Failed to convert file name to str]")))
             .with_style(
                 ProgressStyle::default_bar()
                 .template("{msg}\n{spinner} [{elapsed_precise}] [{wide_bar}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})")?
@@ -197,24 +181,27 @@ async fn download_file(
         create_dir_all(path.parent().unwrap()).await?;
     }
 
-    let mut out_file = File::create(path).await?;
-    let mut downloaded: u64 = 0;
-    let mut stream = res.bytes_stream();
-
-    while let Some(item) = stream.next().await {
-        let chunk = item?;
-        out_file.write_all(&chunk).await?;
-        let new = min(downloaded + (chunk.len() as u64), total_size);
-        downloaded = new;
-        pb.set_position(new);
+    for url in urls {
+        match try_download_file(client, url, path, &pb).await {
+            Ok(()) => {
+                pb.finish_with_message(format!(
+                    "Downloaded {} from {}",
+                    path.to_string_lossy(),
+                    url
+                ));
+                return Ok(());
+            }
+            Err(why) => {
+                eprintln!(
+                    "Failed to download file {} from {url}: {why}",
+                    path.to_str()
+                        .unwrap_or("[Failed to convert file name to str]")
+                );
+            }
+        }
     }
 
-    pb.finish_with_message(format!(
-        "Downloaded {} from {}",
-        path.to_string_lossy(),
-        url
-    ));
-    Ok(())
+    Err("All downloads failed".into())
 }
 
 fn print_info(index_data: &ModrinthIndex) {
