@@ -232,7 +232,10 @@ async fn main() {
     let modrinth_index_data: ModrinthIndex = serde_json::from_slice(&index_data).unwrap();
     for file in modrinth_index_data.files.iter() {
         for url in file.downloads.iter() {
-            if !ALLOWED_HOSTS.contains(&url.domain().unwrap()) {
+            if !ALLOWED_HOSTS.contains(
+                &url.domain()
+                    .expect("IP addresses are not allowed in download URLs"),
+            ) {
                 panic!("Downloading from {} is not allowed.", url.domain().unwrap());
             }
         }
