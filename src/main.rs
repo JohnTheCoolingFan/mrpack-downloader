@@ -169,7 +169,7 @@ async fn download_file(
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     let pb = progress_bars.add(
         ProgressBar::with_draw_target(None, ProgressDrawTarget::stdout())
-            .with_message(format!("Downloading {}", path.to_str().unwrap_or("[Failed to convert file name to str]")))
+            .with_message(format!("Downloading {}", path.to_string_lossy()))
             .with_style(
                 ProgressStyle::default_bar()
                 .template("{msg}\n{spinner} [{elapsed_precise}] [{wide_bar}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})")?
@@ -194,12 +194,13 @@ async fn download_file(
             Err(why) => {
                 eprintln!(
                     "Failed to download file {} from {url}: {why}",
-                    path.to_str()
-                        .unwrap_or("[Failed to convert file name to str]")
+                    path.to_string_lossy(),
                 );
             }
         }
     }
+
+    pb.finish_with_message(format!("Failed to download {}", path.to_string_lossy()));
 
     Err("All downloads failed".into())
 }
