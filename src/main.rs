@@ -138,8 +138,7 @@ async fn download_files(index: ModrinthIndex, output_dir: &Path) {
                 let path_clone = path_clone.clone();
                 let path = path_clone.join(&file.path);
                 sanitize_path(&path, &path_clone);
-                if let Err(why) =
-                    download_file(client_clone, file.downloads, path_clone, mpb_clone).await
+                if let Err(why) = download_file(client_clone, file.downloads, path, mpb_clone).await
                 {
                     eprintln!("Failed to download: {why}");
                 }
@@ -174,7 +173,7 @@ async fn try_download_file(
             downloaded = new;
             bar.set_position(new);
         }
-        todo!()
+        Ok(())
     } else {
         Err(format!(
             "Unexpected status code from {url}: {}; message: {}",
