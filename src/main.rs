@@ -82,11 +82,11 @@ fn sanitize_zip_filename(filename: &str) -> PathBuf {
     filename
         .replace('\\', "/")
         .split('/')
-        .filter(needs_sanitization)
+        .filter(sanitization_filter)
         .collect()
 }
 
-fn needs_sanitization(segment: &&str) -> bool {
+fn sanitization_filter(segment: &&str) -> bool {
     !matches!(*segment, ".." | "")
 }
 
