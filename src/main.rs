@@ -160,18 +160,20 @@ async fn try_download_file(
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     let res = client.get(url.clone()).send().await?;
     if res.status().is_success() {
-        let total_size = res.content_length().unwrap();
-        bar.set_length(total_size);
+        if let Some(total_size) = res.content_length() {
+            bar.set_length(total_size);
+        }
 
         let mut out_file = File::create(path).await?;
         let stream = res.bytes_stream();
 
-        let bar_stream =
-            bar.wrap_stream(stream.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e)));
+        let stream_reader = StreamReader::new(
+            stream.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e)),
+        );
 
-        let mut bar_async_read = StreamReader::new(bar_stream);
+        let mut bar_reader = bar.wrap_async_read(stream_reader);
 
-        tokio::io::copy(&mut bar_async_read, &mut out_file).await?;
+        tokio::io::copy(&mut bar_reader, &mut out_file).await?;
 
         Ok(())
     } else {
