@@ -8,7 +8,7 @@ use std::{
 
 use async_zip::read::fs::ZipFileReader;
 use clap::Parser;
-use futures_util::{future::join_all, stream::StreamExt};
+use futures_util::{future::join_all, stream::StreamExt, TryStreamExt};
 use indicatif::{MultiProgress, ProgressBar, ProgressDrawTarget, ProgressStyle};
 use prompts::{confirm::ConfirmPrompt, Prompt};
 use reqwest::Client;
@@ -18,6 +18,7 @@ use tokio::{
     io::AsyncWriteExt,
     sync::Mutex,
 };
+use tokio_util::io::StreamReader;
 use url::Url;
 
 mod schemas;
@@ -163,16 +164,15 @@ async fn try_download_file(
         bar.set_length(total_size);
 
         let mut out_file = File::create(path).await?;
-        let mut downloaded: u64 = 0;
-        let mut stream = res.bytes_stream();
+        let stream = res.bytes_stream();
 
-        while let Some(item) = stream.next().await {
-            let chunk = item?;
-            out_file.write_all(&chunk).await?;
-            let new = min(downloaded + (chunk.len() as u64), total_size);
-            downloaded = new;
-            bar.set_position(new);
-        }
+        let bar_stream =
+            bar.wrap_stream(stream.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e)));
+
+        let mut bar_async_read = StreamReader::new(bar_stream);
+
+        tokio::io::copy(&mut bar_async_read, &mut out_file).await?;
+
         Ok(())
     } else {
         Err(format!(
