@@ -1,5 +1,4 @@
 use std::{
-    cmp::min,
     error::Error,
     iter::Iterator,
     path::{Path, PathBuf},
@@ -15,7 +14,6 @@ use reqwest::Client;
 use schemas::ModrinthIndex;
 use tokio::{
     fs::{create_dir_all, File},
-    io::AsyncWriteExt,
     sync::Mutex,
 };
 use tokio_util::io::StreamReader;
