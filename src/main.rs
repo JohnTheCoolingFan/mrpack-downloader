@@ -324,6 +324,9 @@ async fn main() {
 
     println!("Extracting overrides");
     extract_folder(&mut zip_file, "overrides", &target_path).await;
-    extract_folder(&mut zip_file, "overrides-client", &target_path).await;
-    extract_folder(&mut zip_file, "overrides-server", &target_path).await;
+    if parameters.server {
+        extract_folder(&mut zip_file, "overrides-server", &target_path).await;
+    } else {
+        extract_folder(&mut zip_file, "overrides-client", &target_path).await;
+    }
 }
