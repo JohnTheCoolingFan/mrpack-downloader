@@ -36,6 +36,9 @@ struct CliParameters {
     /// Download the modpack as server version.
     #[arg(short, long)]
     server: bool,
+    /// If enabled, hash checking stage will be skipped.
+    #[arg(short, long)]
+    ignore_hashes: bool,
 }
 
 async fn get_index_data(
