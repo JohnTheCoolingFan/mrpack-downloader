@@ -11,9 +11,12 @@ use dialoguer::Confirm;
 use futures_util::{future::join_all, stream::StreamExt, TryStreamExt};
 use indicatif::{MultiProgress, ProgressBar, ProgressDrawTarget, ProgressStyle};
 use reqwest::Client;
-use schemas::{EnvRequirement, ModpackFile, ModrinthIndex};
+use schemas::{EnvRequirement, FileHashes, ModpackFile, ModrinthIndex};
+use sha1::{Digest, Sha1};
+use sha2::Sha512;
 use tokio::{
     fs::{create_dir_all, File},
+    io::AsyncReadExt,
     sync::Mutex,
 };
 use tokio_util::io::StreamReader;
@@ -120,16 +123,46 @@ async fn extract_folder(zip: &mut ZipFileReader, name: &str, output_dir: &Path) 
     }
 }
 
-async fn download_files(index: ModrinthIndex, output_dir: &Path) {
+async fn check_hashes(hashes: FileHashes, path: PathBuf) {
+    let mut file = File::open(&path).await.unwrap();
+    let mut file_data = Vec::with_capacity(
+        file.metadata()
+            .await
+            .map(|md| md.len() as usize)
+            .unwrap_or(0),
+    );
+    file.read_to_end(&mut file_data).await.unwrap();
+    drop(file);
+    let sha1_passed = check_sha1(&file_data, &hashes.sha1);
+    let sha512_passed = check_sha512(&file_data, &hashes.sha512);
+    if !(sha1_passed && sha512_passed) {
+        eprintln!("Deleting corrupted file {}", path.to_string_lossy());
+        tokio::fs::remove_file(path).await.unwrap()
+    }
+}
+
+fn check_sha1(data: &[u8], expected_hash: &[u8; 20]) -> bool {
+    let hash = Sha1::digest(data);
+    hash.as_slice() == expected_hash
+}
+
+fn check_sha512(data: &[u8], expected_hash: &[u8; 64]) -> bool {
+    let hash = Sha512::digest(data);
+    hash.as_slice() == expected_hash
+}
+
+async fn download_files(index: ModrinthIndex, output_dir: &Path, ignore_hashes: bool) {
     let mpb = MultiProgress::with_draw_target(ProgressDrawTarget::stdout());
     let client = Client::new();
     let files_stream = Arc::new(Mutex::new(futures::stream::iter(index.files)));
-    let mut handles = Vec::with_capacity(5);
+    let mut handles = Vec::with_capacity(6);
+    let (hash_tx, mut hash_rx) = tokio::sync::mpsc::channel(5);
     for _ in 0..5 {
         let stream_cloned = Arc::clone(&files_stream);
         let client_clone = client.clone();
         let mpb_clone = mpb.clone();
         let path_clone = output_dir.to_path_buf();
+        let hash_tx_clone = hash_tx.clone();
         handles.push(tokio::spawn(async move {
             while let Some(file) = {
                 let mut lock = stream_cloned.lock().await;
@@ -140,13 +173,24 @@ async fn download_files(index: ModrinthIndex, output_dir: &Path) {
                 let path_clone = path_clone.clone();
                 let path = path_clone.join(&file.path);
                 sanitize_path(&path, &path_clone);
-                if let Err(why) = download_file(client_clone, file.downloads, path, mpb_clone).await
+                if let Err(why) =
+                    download_file(client_clone, &file.downloads, path.clone(), mpb_clone).await
                 {
                     eprintln!("Failed to download: {why}");
+                } else if !ignore_hashes {
+                    hash_tx_clone.send((file, path)).await.unwrap();
                 }
             }
         }))
     }
+    if !ignore_hashes {
+        handles.push(tokio::spawn(async move {
+            while let Some((file_info, path)) = hash_rx.recv().await {
+                check_hashes(file_info.hashes, path).await;
+            }
+        }));
+    }
+    drop(hash_tx);
 
     for res in tokio::join!(join_all(handles)).0 {
         res.unwrap()
@@ -189,7 +233,7 @@ async fn try_download_file(
 
 async fn download_file(
     client: Client,
-    urls: Vec<Url>,
+    urls: &[Url],
     path: PathBuf,
     progress_bars: MultiProgress,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -208,7 +252,7 @@ async fn download_file(
     }
 
     for url in urls {
-        match try_download_file(&client, &url, &path, &pb).await {
+        match try_download_file(&client, url, &path, &pb).await {
             Ok(()) => {
                 pb.finish_with_message(format!(
                     "Downloaded {} from {}",
@@ -323,7 +367,7 @@ async fn main() {
     }
 
     println!("Downloading files");
-    download_files(modrinth_index_data, &target_path).await;
+    download_files(modrinth_index_data, &target_path, parameters.ignore_hashes).await;
 
     println!("Extracting overrides");
     extract_folder(&mut zip_file, "overrides", &target_path).await;

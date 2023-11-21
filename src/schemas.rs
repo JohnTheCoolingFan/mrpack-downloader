@@ -30,11 +30,11 @@ pub struct ModpackFile {
 #[derive(Debug, Clone, Deserialize)]
 pub struct FileHashes {
     #[serde(deserialize_with = "hex::deserialize")]
-    sha1: [u8; 20],
+    pub sha1: [u8; 20],
     #[serde(deserialize_with = "hex::deserialize")]
-    sha512: [u8; 64],
+    pub sha512: [u8; 64],
     #[serde(flatten)]
-    other_hashes: HashMap<String, String>,
+    pub other_hashes: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
