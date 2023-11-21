@@ -7,11 +7,11 @@ use std::{
 
 use async_zip::read::fs::ZipFileReader;
 use clap::Parser;
+use dialoguer::Confirm;
 use futures_util::{future::join_all, stream::StreamExt, TryStreamExt};
 use indicatif::{MultiProgress, ProgressBar, ProgressDrawTarget, ProgressStyle};
-use prompts::{confirm::ConfirmPrompt, Prompt};
 use reqwest::Client;
-use schemas::ModrinthIndex;
+use schemas::{EnvRequirement, ModpackFile, ModrinthIndex};
 use tokio::{
     fs::{create_dir_all, File},
     sync::Mutex,
@@ -239,6 +239,35 @@ fn print_info(index_data: &ModrinthIndex) {
     }
 }
 
+fn filter_file_list(files: &mut Vec<ModpackFile>, is_server: bool) {
+    files.retain(|file| match &file.env {
+        None => true,
+        Some(reqs) => {
+            let req = if is_server {
+                &reqs.server
+            } else {
+                &reqs.client
+            };
+            match req {
+                EnvRequirement::Required => true,
+                EnvRequirement::Unsupported => false,
+                EnvRequirement::Optional => !matches!(
+                    Confirm::new()
+                        .with_prompt(format!(
+                            "Download optional {}?",
+                            file.path.to_string_lossy()
+                        ))
+                        .default(true)
+                        .wait_for_newline(false)
+                        .interact_opt()
+                        .unwrap(),
+                    Some(false) | None
+                ),
+            }
+        }
+    })
+}
+
 #[tokio::main]
 async fn main() {
     let mut parameters = CliParameters::parse();
@@ -252,7 +281,7 @@ async fn main() {
         .await
         .unwrap();
 
-    let modrinth_index_data: ModrinthIndex = serde_json::from_slice(&index_data).unwrap();
+    let mut modrinth_index_data: ModrinthIndex = serde_json::from_slice(&index_data).unwrap();
     for file in modrinth_index_data.files.iter() {
         for url in file.downloads.iter() {
             if !ALLOWED_HOSTS.contains(
@@ -268,10 +297,22 @@ async fn main() {
 
     print_info(&modrinth_index_data);
 
-    match ConfirmPrompt::new("Proceed?")
-        .set_initial(true)
-        .run()
-        .await
+    if parameters.server {
+        println!("Downloading as a server version is enabled");
+    }
+
+    filter_file_list(&mut modrinth_index_data.files, parameters.server);
+
+    println!(
+        "Total amount of files to download after filtering: {}",
+        modrinth_index_data.files.len()
+    );
+
+    match Confirm::new()
+        .with_prompt("Proceed to downloading?")
+        .default(true)
+        .wait_for_newline(true)
+        .interact_opt()
         .unwrap()
     {
         Some(false) | None => return,
