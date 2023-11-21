@@ -33,7 +33,7 @@ const ALLOWED_HOSTS: [&str; 4] = [
 struct CliParameters {
     input_file: PathBuf,
     output_dir: PathBuf,
-    /// Download the modpack as server version. Currently does nothing.
+    /// Download the modpack as server version.
     #[arg(short, long)]
     server: bool,
 }
