@@ -18,6 +18,7 @@ use tokio::{
     fs::{create_dir_all, File},
     io::AsyncReadExt,
     sync::Mutex,
+    task::yield_now,
 };
 use tokio_util::io::StreamReader;
 use url::Url;
@@ -155,7 +156,7 @@ async fn download_files(index: ModrinthIndex, output_dir: &Path, ignore_hashes: 
     let mpb = MultiProgress::with_draw_target(ProgressDrawTarget::stdout());
     let client = Client::new();
     let files_stream = Arc::new(Mutex::new(futures::stream::iter(index.files)));
-    let mut handles = Vec::with_capacity(6);
+    let mut handles = Vec::with_capacity(5);
     let (hash_tx, mut hash_rx) = tokio::sync::mpsc::channel(5);
     for _ in 0..5 {
         let stream_cloned = Arc::clone(&files_stream);
@@ -183,17 +184,22 @@ async fn download_files(index: ModrinthIndex, output_dir: &Path, ignore_hashes: 
             }
         }))
     }
-    if !ignore_hashes {
-        handles.push(tokio::spawn(async move {
+    let hasher_handle = if !ignore_hashes {
+        tokio::spawn(async move {
             while let Some((file_info, path)) = hash_rx.recv().await {
                 check_hashes(file_info.hashes, path).await;
             }
-        }));
-    }
+        })
+    } else {
+        tokio::spawn(async move { yield_now().await })
+    };
     drop(hash_tx);
 
-    for res in tokio::join!(join_all(handles)).0 {
-        res.unwrap()
+    let (download_results, hash_res) = tokio::join!(join_all(handles), hasher_handle);
+
+    hash_res.expect("Hash checking task failed");
+    for res in download_results {
+        res.expect("Download task failed");
     }
 }
 
