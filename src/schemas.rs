@@ -21,10 +21,20 @@ pub struct ModrinthIndex {
 #[serde(rename_all = "camelCase")]
 pub struct ModpackFile {
     pub path: PathBuf,
-    pub hashes: HashMap<String, String>,
+    pub hashes: FileHashes,
     pub env: Option<FileEnv>,
     pub downloads: Vec<Url>,
     pub file_size: u32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct FileHashes {
+    #[serde(deserialize_with = "hex::deserialize")]
+    sha1: [u8; 20],
+    #[serde(deserialize_with = "hex::deserialize")]
+    sha512: [u8; 64],
+    #[serde(flatten)]
+    other_hashes: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
