@@ -199,7 +199,11 @@ async fn download_files(index: ModrinthIndex, output_dir: &Path, ignore_hashes: 
     }
     drop(hash_tx);
 
-    while joinset.join_next().await.is_some() {}
+    while let Some(res) = joinset.join_next().await {
+        if let Err(e) = res {
+            eprintln!("Task finished with an error: {e}");
+        }
+    }
 }
 
 async fn try_download_file(
