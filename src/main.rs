@@ -19,7 +19,7 @@ use tokio::{
     fs::{create_dir_all, File},
     io::AsyncReadExt,
     sync::Mutex,
-    task::yield_now,
+    task::{yield_now, JoinSet},
 };
 use tokio_util::io::StreamReader;
 use url::Url;
@@ -160,7 +160,7 @@ async fn download_files(index: ModrinthIndex, output_dir: &Path, ignore_hashes: 
     let mpb = MultiProgress::with_draw_target(ProgressDrawTarget::stdout());
     let client = Client::new();
     let files_stream = Arc::new(Mutex::new(futures::stream::iter(index.files)));
-    let mut handles = Vec::with_capacity(jobs);
+    let mut joinset = JoinSet::new();
     let (hash_tx, mut hash_rx) = tokio::sync::mpsc::channel(jobs);
     for _ in 0..jobs {
         let stream_cloned = Arc::clone(&files_stream);
@@ -168,7 +168,7 @@ async fn download_files(index: ModrinthIndex, output_dir: &Path, ignore_hashes: 
         let mpb_clone = mpb.clone();
         let path_clone = output_dir.to_path_buf();
         let hash_tx_clone = hash_tx.clone();
-        handles.push(tokio::spawn(async move {
+        joinset.spawn(async move {
             while let Some(file) = {
                 let mut lock = stream_cloned.lock().await;
                 lock.next().await
@@ -185,27 +185,24 @@ async fn download_files(index: ModrinthIndex, output_dir: &Path, ignore_hashes: 
                 {
                     eprintln!("Failed to download: {why}");
                 } else if !ignore_hashes {
-                    hash_tx_clone.send((file, path)).await.unwrap();
+                    hash_tx_clone.send((file.hashes, path)).await.unwrap();
                 }
             }
-        }))
+        });
     }
-    let hasher_handle = if !ignore_hashes {
-        tokio::spawn(async move {
-            while let Some((file_info, path)) = hash_rx.recv().await {
-                check_hashes(file_info.hashes, path).await;
+    if !ignore_hashes {
+        joinset.spawn(async move {
+            while let Some((file_hashes, path)) = hash_rx.recv().await {
+                check_hashes(file_hashes, path).await;
             }
-        })
-    } else {
-        tokio::spawn(async move { yield_now().await })
-    };
+        });
+    }
     drop(hash_tx);
 
-    let (download_results, hash_res) = tokio::join!(join_all(handles), hasher_handle);
-
-    hash_res.expect("Hash checking task failed");
-    for res in download_results {
-        res.expect("Download task failed");
+    while let Some(res) = joinset.join_next().await {
+        if let Err(e) = res {
+            eprintln!("Task finished with an error: {e}");
+        }
     }
 }
 
