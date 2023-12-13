@@ -1,6 +1,7 @@
 use std::{
     error::Error,
     iter::Iterator,
+    num::NonZeroUsize,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -43,6 +44,9 @@ struct CliParameters {
     /// If enabled, hash checking stage will be skipped.
     #[arg(short, long)]
     ignore_hashes: bool,
+    /// Set the number of concurrent downloads. Default is 5.
+    #[arg(short, long)]
+    jobs: Option<NonZeroUsize>,
 }
 
 async fn get_index_data(
@@ -64,7 +68,7 @@ async fn get_index_data(
     Ok(())
 }
 
-fn sanitize_path(path: &Path, output_dir: &Path) {
+fn sanitize_path_check(path: &Path, output_dir: &Path) {
     let sanitized_path = canonicalize_recursively(path).unwrap();
     if !sanitized_path.starts_with(output_dir) {
         panic!(
@@ -104,7 +108,7 @@ async fn extract_folder(zip: &mut ZipFileReader, name: &str, output_dir: &Path) 
             let zip_path =
                 sanitize_zip_filename(entry.filename().strip_prefix(&format!("{name}/")).unwrap());
             let zip_path = output_dir.join(zip_path);
-            sanitize_path(&zip_path, output_dir);
+            sanitize_path_check(&zip_path, output_dir);
             let mut entry_reader = zip.entry(i).await.unwrap();
             if entry.dir() {
                 if !zip_path.exists() {
@@ -152,13 +156,13 @@ fn check_sha512(data: &[u8], expected_hash: &[u8; 64]) -> bool {
     hash.as_slice() == expected_hash
 }
 
-async fn download_files(index: ModrinthIndex, output_dir: &Path, ignore_hashes: bool) {
+async fn download_files(index: ModrinthIndex, output_dir: &Path, ignore_hashes: bool, jobs: usize) {
     let mpb = MultiProgress::with_draw_target(ProgressDrawTarget::stdout());
     let client = Client::new();
     let files_stream = Arc::new(Mutex::new(futures::stream::iter(index.files)));
-    let mut handles = Vec::with_capacity(5);
-    let (hash_tx, mut hash_rx) = tokio::sync::mpsc::channel(5);
-    for _ in 0..5 {
+    let mut handles = Vec::with_capacity(jobs);
+    let (hash_tx, mut hash_rx) = tokio::sync::mpsc::channel(jobs);
+    for _ in 0..jobs {
         let stream_cloned = Arc::clone(&files_stream);
         let client_clone = client.clone();
         let mpb_clone = mpb.clone();
@@ -169,13 +173,15 @@ async fn download_files(index: ModrinthIndex, output_dir: &Path, ignore_hashes: 
                 let mut lock = stream_cloned.lock().await;
                 lock.next().await
             } {
-                let client_clone = client_clone.clone();
-                let mpb_clone = mpb_clone.clone();
-                let path_clone = path_clone.clone();
                 let path = path_clone.join(&file.path);
-                sanitize_path(&path, &path_clone);
-                if let Err(why) =
-                    download_file(client_clone, &file.downloads, path.clone(), mpb_clone).await
+                sanitize_path_check(&path, &path_clone);
+                if let Err(why) = download_file(
+                    client_clone.clone(),
+                    &file.downloads,
+                    &path,
+                    mpb_clone.clone(),
+                )
+                .await
                 {
                     eprintln!("Failed to download: {why}");
                 } else if !ignore_hashes {
@@ -240,7 +246,7 @@ async fn try_download_file(
 async fn download_file(
     client: Client,
     urls: &[Url],
-    path: PathBuf,
+    path: &Path,
     progress_bars: MultiProgress,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     let pb = progress_bars.add(
@@ -373,7 +379,13 @@ async fn main() {
     }
 
     println!("Downloading files");
-    download_files(modrinth_index_data, &target_path, parameters.ignore_hashes).await;
+    download_files(
+        modrinth_index_data,
+        &target_path,
+        parameters.ignore_hashes,
+        parameters.jobs.map(NonZeroUsize::get).unwrap_or(5),
+    )
+    .await;
 
     println!("Extracting overrides");
     extract_folder(&mut zip_file, "overrides", &target_path).await;
