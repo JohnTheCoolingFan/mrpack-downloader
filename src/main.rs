@@ -9,7 +9,7 @@ use std::{
 use async_zip::read::fs::ZipFileReader;
 use clap::Parser;
 use dialoguer::Confirm;
-use futures_util::{future::join_all, stream::StreamExt, TryStreamExt};
+use futures_util::{stream::StreamExt, TryStreamExt};
 use indicatif::{MultiProgress, ProgressBar, ProgressDrawTarget, ProgressStyle};
 use reqwest::Client;
 use schemas::{EnvRequirement, FileHashes, ModpackFile, ModrinthIndex};
@@ -19,7 +19,7 @@ use tokio::{
     fs::{create_dir_all, File},
     io::AsyncReadExt,
     sync::Mutex,
-    task::{yield_now, JoinSet},
+    task::JoinSet,
 };
 use tokio_util::io::StreamReader;
 use url::Url;
@@ -92,21 +92,21 @@ fn sanitize_zip_filename(filename: &str) -> PathBuf {
     filename
         .replace('\\', "/")
         .split('/')
-        .filter(sanitization_filter)
+        .filter(|seg| !matches!(*seg, ".." | ""))
         .collect()
 }
 
-fn sanitization_filter(segment: &&str) -> bool {
-    !matches!(*segment, ".." | "")
-}
-
-async fn extract_folder(zip: &mut ZipFileReader, name: &str, output_dir: &Path) {
+async fn extract_folder(zip: &mut ZipFileReader, folder_name: &str, output_dir: &Path) {
     for (i, entry) in zip.file().entries().iter().enumerate() {
         let entry = entry.entry();
-        if entry.filename().starts_with(&format!("{name}/")) {
+        if entry.filename().starts_with(&format!("{folder_name}/")) {
             println!("Extracting {}", entry.filename());
-            let zip_path =
-                sanitize_zip_filename(entry.filename().strip_prefix(&format!("{name}/")).unwrap());
+            let zip_path = sanitize_zip_filename(
+                entry
+                    .filename()
+                    .strip_prefix(&format!("{folder_name}/"))
+                    .unwrap(),
+            );
             let zip_path = output_dir.join(zip_path);
             sanitize_path_check(&zip_path, output_dir);
             let mut entry_reader = zip.entry(i).await.unwrap();
@@ -261,7 +261,7 @@ async fn download_file(
     }
 
     for url in urls {
-        match try_download_file(&client, url, &path, &pb).await {
+        match try_download_file(&client, url, path, &pb).await {
             Ok(()) => {
                 pb.finish_with_message(format!(
                     "Downloaded {} from {}",
