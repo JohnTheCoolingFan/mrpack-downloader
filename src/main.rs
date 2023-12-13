@@ -9,7 +9,7 @@ use std::{
 use async_zip::read::fs::ZipFileReader;
 use clap::Parser;
 use dialoguer::Confirm;
-use futures_util::{future::join_all, stream::StreamExt, TryStreamExt};
+use futures_util::{stream::StreamExt, TryStreamExt};
 use indicatif::{MultiProgress, ProgressBar, ProgressDrawTarget, ProgressStyle};
 use reqwest::Client;
 use schemas::{EnvRequirement, FileHashes, ModpackFile, ModrinthIndex};
@@ -19,7 +19,7 @@ use tokio::{
     fs::{create_dir_all, File},
     io::AsyncReadExt,
     sync::Mutex,
-    task::{yield_now, JoinSet},
+    task::JoinSet,
 };
 use tokio_util::io::StreamReader;
 use url::Url;
@@ -261,7 +261,7 @@ async fn download_file(
     }
 
     for url in urls {
-        match try_download_file(&client, url, &path, &pb).await {
+        match try_download_file(&client, url, path, &pb).await {
             Ok(()) => {
                 pb.finish_with_message(format!(
                     "Downloaded {} from {}",
