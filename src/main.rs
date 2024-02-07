@@ -1,6 +1,5 @@
 use std::{
     error::Error,
-    fmt::Display,
     iter::Iterator,
     num::NonZeroUsize,
     path::{Path, PathBuf},
@@ -49,6 +48,9 @@ struct CliParameters {
     /// Set the number of concurrent downloads.
     #[arg(short, long, default_value_t = unsafe {NonZeroUsize::new_unchecked(5)})]
     jobs: NonZeroUsize,
+    /// Skip download host check. See https://docs.modrinth.com/modpacks/format#downloads
+    #[arg(long)]
+    skip_host_check: bool,
 }
 
 #[derive(Debug, Error)]
@@ -349,20 +351,20 @@ async fn get_index_data(zip_file: &mut ZipFileReader) -> Result<ModrinthIndex, I
 
 #[tokio::main]
 async fn main() {
-    let mut parameters = CliParameters::parse();
+    let parameters = CliParameters::parse();
 
-    let mut zip_file = ZipFileReader::new(&mut parameters.input_file)
-        .await
-        .unwrap();
+    let mut zip_file = ZipFileReader::new(parameters.input_file).await.unwrap();
 
     let mut modrinth_index_data = get_index_data(&mut zip_file).await.unwrap();
-    for file in modrinth_index_data.files.iter() {
-        for url in file.downloads.iter() {
-            if !ALLOWED_HOSTS.contains(
-                &url.domain()
-                    .expect("IP addresses are not allowed in download URLs"),
-            ) {
-                panic!("Downloading from {} is not allowed. See https://docs.modrinth.com/modpacks/format#downloads", url.domain().unwrap());
+    if !parameters.skip_host_check {
+        for file in modrinth_index_data.files.iter() {
+            for url in file.downloads.iter() {
+                if !ALLOWED_HOSTS.contains(
+                    &url.domain()
+                        .expect("IP addresses are not allowed in download URLs"),
+                ) {
+                    panic!("Downloading from {} is not allowed. See https://docs.modrinth.com/modpacks/format#downloads", url.domain().unwrap());
+                }
             }
         }
     }
