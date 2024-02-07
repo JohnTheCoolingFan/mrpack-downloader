@@ -1,5 +1,6 @@
 use std::{
     error::Error,
+    fmt::Display,
     iter::Iterator,
     num::NonZeroUsize,
     path::{Path, PathBuf},
@@ -15,6 +16,7 @@ use reqwest::Client;
 use schemas::{EnvRequirement, FileHashes, ModpackFile, ModrinthIndex};
 use sha1::{Digest, Sha1};
 use sha2::Sha512;
+use thiserror::Error;
 use tokio::{
     fs::{create_dir_all, File},
     io::AsyncReadExt,
@@ -49,10 +51,15 @@ struct CliParameters {
     jobs: NonZeroUsize,
 }
 
-async fn get_index_data(
-    buf: &mut Vec<u8>,
-    zip: &mut ZipFileReader,
-) -> async_zip::error::Result<()> {
+#[derive(Debug, Error)]
+enum IndexReadError {
+    #[error(transparent)]
+    AsyncZip(#[from] async_zip::error::ZipError),
+    #[error("modrinth.index.json was not found within the modpack file")]
+    NotFound,
+}
+
+async fn read_index_data(buf: &mut Vec<u8>, zip: &mut ZipFileReader) -> Result<(), IndexReadError> {
     let mut found = false;
     for (i, file) in zip.file().entries().iter().enumerate() {
         if file.entry().filename() == "modrinth.index.json" {
@@ -63,9 +70,10 @@ async fn get_index_data(
         }
     }
     if !found {
-        panic!("modrinth.index.json not found within modpack file");
+        Err(IndexReadError::NotFound)
+    } else {
+        Ok(())
     }
-    Ok(())
 }
 
 fn sanitize_path_check(path: &Path, output_dir: &Path) {
@@ -324,6 +332,21 @@ fn filter_file_list(files: &mut Vec<ModpackFile>, is_server: bool) {
     })
 }
 
+#[derive(Debug, Error)]
+enum IndexGetError {
+    #[error(transparent)]
+    ReadError(#[from] IndexReadError),
+    #[error("Failed to deserialize index file: {0}")]
+    SerdeError(#[from] serde_json::Error),
+}
+
+async fn get_index_data(zip_file: &mut ZipFileReader) -> Result<ModrinthIndex, IndexGetError> {
+    let mut index_data: Vec<u8> = Vec::new();
+    read_index_data(&mut index_data, zip_file).await?;
+
+    serde_json::from_slice(&index_data).map_err(Into::into)
+}
+
 #[tokio::main]
 async fn main() {
     let mut parameters = CliParameters::parse();
@@ -332,12 +355,7 @@ async fn main() {
         .await
         .unwrap();
 
-    let mut index_data: Vec<u8> = Vec::new();
-    get_index_data(&mut index_data, &mut zip_file)
-        .await
-        .unwrap();
-
-    let mut modrinth_index_data: ModrinthIndex = serde_json::from_slice(&index_data).unwrap();
+    let mut modrinth_index_data = get_index_data(&mut zip_file).await.unwrap();
     for file in modrinth_index_data.files.iter() {
         for url in file.downloads.iter() {
             if !ALLOWED_HOSTS.contains(
