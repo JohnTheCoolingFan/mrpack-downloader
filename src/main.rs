@@ -92,21 +92,21 @@ fn sanitize_zip_filename(filename: &str) -> PathBuf {
     filename
         .replace('\\', "/")
         .split('/')
-        .filter(sanitization_filter)
+        .filter(|seg| !matches!(*seg, ".." | ""))
         .collect()
 }
 
-fn sanitization_filter(segment: &&str) -> bool {
-    !matches!(*segment, ".." | "")
-}
-
-async fn extract_folder(zip: &mut ZipFileReader, name: &str, output_dir: &Path) {
+async fn extract_folder(zip: &mut ZipFileReader, folder_name: &str, output_dir: &Path) {
     for (i, entry) in zip.file().entries().iter().enumerate() {
         let entry = entry.entry();
-        if entry.filename().starts_with(&format!("{name}/")) {
+        if entry.filename().starts_with(&format!("{folder_name}/")) {
             println!("Extracting {}", entry.filename());
-            let zip_path =
-                sanitize_zip_filename(entry.filename().strip_prefix(&format!("{name}/")).unwrap());
+            let zip_path = sanitize_zip_filename(
+                entry
+                    .filename()
+                    .strip_prefix(&format!("{folder_name}/"))
+                    .unwrap(),
+            );
             let zip_path = output_dir.join(zip_path);
             sanitize_path_check(&zip_path, output_dir);
             let mut entry_reader = zip.entry(i).await.unwrap();
