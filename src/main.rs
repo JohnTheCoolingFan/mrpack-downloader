@@ -1,9 +1,7 @@
 use std::{
-    error::Error,
     iter::Iterator,
     num::NonZeroUsize,
     path::{Path, PathBuf},
-    sync::Arc,
 };
 
 use async_zip::read::fs::ZipFileReader;
@@ -11,7 +9,7 @@ use clap::Parser;
 use dialoguer::Confirm;
 use futures_util::{stream::StreamExt, TryStreamExt};
 use indicatif::{MultiProgress, ProgressBar, ProgressDrawTarget, ProgressStyle};
-use reqwest::Client;
+use reqwest::{Client, StatusCode};
 use schemas::{EnvRequirement, FileHashes, ModpackFile, ModrinthIndex};
 use sha1::{Digest, Sha1};
 use sha2::Sha512;
@@ -19,8 +17,6 @@ use thiserror::Error;
 use tokio::{
     fs::{create_dir_all, File},
     io::AsyncReadExt,
-    sync::Mutex,
-    task::JoinSet,
 };
 use tokio_util::io::StreamReader;
 use url::Url;
@@ -166,54 +162,45 @@ fn check_sha512(data: &[u8], expected_hash: &[u8; 64]) -> bool {
     hash.as_slice() == expected_hash
 }
 
-async fn download_files(index: ModrinthIndex, output_dir: &Path, ignore_hashes: bool, jobs: usize) {
+async fn download_files(
+    index: ModrinthIndex,
+    output_dir: &Path,
+    ignore_hashes: bool,
+    jobs: usize,
+) -> Result<(), FileDownloadError> {
     let mpb = MultiProgress::with_draw_target(ProgressDrawTarget::stdout());
     let client = Client::new();
-    let files_stream = Arc::new(Mutex::new(futures::stream::iter(index.files)));
-    let mut joinset = JoinSet::new();
-    let (hash_tx, mut hash_rx) = tokio::sync::mpsc::channel(jobs);
-    for _ in 0..jobs {
-        let stream_cloned = Arc::clone(&files_stream);
-        let client_clone = client.clone();
-        let mpb_clone = mpb.clone();
-        let path_clone = output_dir.to_path_buf();
-        let hash_tx_clone = hash_tx.clone();
-        joinset.spawn(async move {
-            while let Some(file) = {
-                let mut lock = stream_cloned.lock().await;
-                lock.next().await
-            } {
-                let path = path_clone.join(&file.path);
-                sanitize_path_check(&path, &path_clone);
-                if let Err(why) = download_file(
-                    client_clone.clone(),
-                    &file.downloads,
-                    &path,
-                    mpb_clone.clone(),
-                )
-                .await
-                {
-                    eprintln!("Failed to download: {why}");
-                } else if !ignore_hashes {
-                    hash_tx_clone.send((file.hashes, path)).await.unwrap();
-                }
+    let files_stream = futures::stream::iter(index.files);
+    files_stream
+        .map::<Result<_, FileDownloadError>, _>(Ok)
+        .try_for_each_concurrent(jobs, |file| {
+            let client_clone = client.clone();
+            let mpb_clone = mpb.clone();
+            let path = output_dir.join(&file.path);
+            sanitize_path_check(&path, output_dir);
+            async move {
+                download_file(client_clone, &file.downloads, &path, mpb_clone).await?;
+                if !ignore_hashes {
+                    check_hashes(file.hashes, path).await;
+                };
+                Ok(())
             }
-        });
-    }
-    if !ignore_hashes {
-        joinset.spawn(async move {
-            while let Some((file_hashes, path)) = hash_rx.recv().await {
-                check_hashes(file_hashes, path).await;
-            }
-        });
-    }
-    drop(hash_tx);
+        })
+        .await
+}
 
-    while let Some(res) = joinset.join_next().await {
-        if let Err(e) = res {
-            eprintln!("Task finished with an error: {e}");
-        }
-    }
+#[derive(Debug, Error)]
+enum FileTryDownloadError {
+    #[error("I/O error: {0}")]
+    IoError(#[from] std::io::Error),
+    #[error("Request error: {0}")]
+    RequestError(#[from] reqwest::Error),
+    #[error("Request to {url} failed. Status code: {status}; message: {message}")]
+    RequestFailed {
+        url: Url,
+        status: StatusCode,
+        message: String,
+    },
 }
 
 async fn try_download_file(
@@ -221,9 +208,10 @@ async fn try_download_file(
     url: &Url,
     path: &Path,
     bar: &ProgressBar,
-) -> Result<(), Box<dyn Error + Send + Sync>> {
+) -> Result<(), FileTryDownloadError> {
     let res = client.get(url.clone()).send().await?;
-    if res.status().is_success() {
+    let status = res.status();
+    if status.is_success() {
         if let Some(total_size) = res.content_length() {
             bar.set_length(total_size);
         }
@@ -241,13 +229,20 @@ async fn try_download_file(
 
         Ok(())
     } else {
-        Err(format!(
-            "Unexpected status code from {url}: {}; message: {}",
-            res.status(),
-            res.text().await?
-        )
-        .into())
+        Err(FileTryDownloadError::RequestFailed {
+            url: url.clone(),
+            status,
+            message: res.text().await?,
+        })
     }
+}
+
+#[derive(Debug, Error)]
+enum FileDownloadError {
+    #[error("I/O error: {0}")]
+    IoError(#[from] std::io::Error),
+    #[error("All downloads have failed")]
+    AllDownloadsFailed,
 }
 
 async fn download_file(
@@ -255,43 +250,55 @@ async fn download_file(
     urls: &[Url],
     path: &Path,
     progress_bars: MultiProgress,
-) -> Result<(), Box<dyn Error + Send + Sync>> {
+) -> Result<(), FileDownloadError> {
     let pb = progress_bars.add(
         ProgressBar::with_draw_target(None, ProgressDrawTarget::stdout())
             .with_message(format!("Downloading {}", path.to_string_lossy()))
             .with_style(
                 ProgressStyle::default_bar()
-                .template("{msg}\n{spinner} [{elapsed_precise}] [{wide_bar}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})")?
+                .template("{msg}\n{spinner} [{elapsed_precise}] [{wide_bar}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})").expect("Incorrect template provided")
                 .progress_chars("#> ")
             ),
     );
 
+    // The directories will be created in case the parent directory doesn't exist or the parent is
+    // actually a file, which is an error condition and will be reported in the error.
     if !path.parent().unwrap().is_dir() {
         create_dir_all(path.parent().unwrap()).await?;
     }
 
-    for url in urls {
-        match try_download_file(&client, url, path, &pb).await {
-            Ok(()) => {
-                pb.finish_with_message(format!(
-                    "Downloaded {} from {}",
-                    path.to_string_lossy(),
-                    url
-                ));
-                return Ok(());
-            }
-            Err(why) => {
-                eprintln!(
-                    "Failed to download file {} from {url}: {why}",
-                    path.to_string_lossy(),
-                );
+    let mut urls_iter = urls.iter();
+
+    // This loop tries all urls until one of them succedes or it runs out of urls. The iterator is
+    // finite (fused) which guarantees that the loop will finish.
+    loop {
+        match urls_iter.next() {
+            // Try next url in the list
+            Some(url) => match try_download_file(&client, url, path, &pb).await {
+                // Downloads succeded, stop looping and return.
+                Ok(()) => {
+                    pb.finish_with_message(format!(
+                        "Downloaded {} from {}",
+                        path.to_string_lossy(),
+                        url
+                    ));
+                    break Ok(());
+                }
+                // An error occured. Report and go to the next url.
+                Err(why) => {
+                    eprintln!(
+                        "Failed to download file {} from {url}: {why}",
+                        path.to_string_lossy(),
+                    );
+                }
+            },
+            // No more urls to try.
+            None => {
+                pb.finish_with_message(format!("Failed to download {}", path.to_string_lossy()));
+                break Err(FileDownloadError::AllDownloadsFailed);
             }
         }
     }
-
-    pb.finish_with_message(format!("Failed to download {}", path.to_string_lossy()));
-
-    Err("All downloads failed".into())
 }
 
 fn print_info(index_data: &ModrinthIndex) {
@@ -396,15 +403,18 @@ async fn main() {
     }
 
     println!("Downloading files");
-    download_files(
+    if let Err(why) = download_files(
         modrinth_index_data,
         &target_path,
         parameters.ignore_hashes,
         parameters.jobs.get(),
     )
-    .await;
+    .await
+    {
+        panic!("Download failed: {why}");
+    }
 
-    println!("Extracting overrides");
+    println!("Extracting additional files (overrides)");
     extract_folder(&mut zip_file, "overrides", &target_path).await;
     if parameters.server {
         extract_folder(&mut zip_file, "overrides-server", &target_path).await;
