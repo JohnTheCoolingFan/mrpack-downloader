@@ -44,9 +44,9 @@ struct CliParameters {
     /// If enabled, hash checking stage will be skipped.
     #[arg(short, long)]
     ignore_hashes: bool,
-    /// Set the number of concurrent downloads. Default is 5.
-    #[arg(short, long)]
-    jobs: Option<NonZeroUsize>,
+    /// Set the number of concurrent downloads.
+    #[arg(short, long, default_value_t = unsafe {NonZeroUsize::new_unchecked(5)})]
+    jobs: NonZeroUsize,
 }
 
 async fn get_index_data(
@@ -380,7 +380,7 @@ async fn main() {
         modrinth_index_data,
         &target_path,
         parameters.ignore_hashes,
-        parameters.jobs.map(NonZeroUsize::get).unwrap_or(5),
+        parameters.jobs.get(),
     )
     .await;
 
