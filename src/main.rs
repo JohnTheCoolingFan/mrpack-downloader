@@ -41,7 +41,9 @@ struct CliParameters {
     /// Set the number of concurrent downloads.
     #[arg(short, long, default_value_t = unsafe {NonZeroUsize::new_unchecked(5)})]
     jobs: NonZeroUsize,
-    /// Skip download host check. See https://docs.modrinth.com/modpacks/format#downloads
+    /// Skip download host check.
+    ///
+    /// See https://docs.modrinth.com/modpacks/format#downloads
     #[arg(long)]
     skip_host_check: bool,
 }
