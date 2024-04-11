@@ -17,6 +17,19 @@ pub struct ModrinthIndex {
     pub dependencies: HashMap<ModpackDependencyId, Version>,
 }
 
+impl ModrinthIndex {
+    pub(crate) fn print_info(&self) {
+        println!("{} version {}", self.name, self.version_id);
+        if let Some(summary) = &self.summary {
+            println!("\n{summary}");
+        }
+        println!("\nDependencies:");
+        for (dep_id, dep_ver) in &self.dependencies {
+            println!("{}: {}", dep_id.as_ref(), dep_ver);
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModpackFile {

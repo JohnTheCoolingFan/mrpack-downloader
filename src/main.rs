@@ -266,17 +266,6 @@ async fn download_file(
     }
 }
 
-fn print_info(index_data: &ModrinthIndex) {
-    println!("{} version {}", index_data.name, index_data.version_id);
-    if let Some(summary) = &index_data.summary {
-        println!("\n{summary}");
-    }
-    println!("\nDependencies:");
-    for (dep_id, dep_ver) in &index_data.dependencies {
-        println!("{}: {}", dep_id.as_ref(), dep_ver);
-    }
-}
-
 fn filter_file_list(files: &mut Vec<ModpackFile>, is_server: bool) {
     files.retain(|file| match &file.env {
         None => true,
@@ -343,7 +332,7 @@ async fn main() {
 
     let target_path = parameters.output_dir.canonicalize().unwrap();
 
-    print_info(&modrinth_index_data);
+    modrinth_index_data.print_info();
 
     if parameters.server {
         println!("Downloading as a server version is enabled");
