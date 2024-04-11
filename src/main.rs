@@ -8,19 +8,16 @@ use async_zip::read::fs::ZipFileReader;
 use clap::Parser;
 use dialoguer::Confirm;
 use futures_util::{stream::StreamExt, TryStreamExt};
+use hash_checks::check_hashes;
 use indicatif::{MultiProgress, ProgressBar, ProgressDrawTarget, ProgressStyle};
 use reqwest::{Client, StatusCode};
-use schemas::{EnvRequirement, FileHashes, ModpackFile, ModrinthIndex};
-use sha1::{Digest, Sha1};
-use sha2::Sha512;
+use schemas::{EnvRequirement, ModpackFile, ModrinthIndex};
 use thiserror::Error;
-use tokio::{
-    fs::{create_dir_all, File},
-    io::AsyncReadExt,
-};
+use tokio::fs::{create_dir_all, File};
 use tokio_util::io::StreamReader;
 use url::Url;
 
+mod hash_checks;
 mod schemas;
 
 const ALLOWED_HOSTS: [&str; 4] = [
@@ -132,34 +129,6 @@ async fn extract_folder(zip: &mut ZipFileReader, folder_name: &str, output_dir: 
             }
         }
     }
-}
-
-async fn check_hashes(hashes: FileHashes, path: PathBuf) {
-    let mut file = File::open(&path).await.unwrap();
-    let mut file_data = Vec::with_capacity(
-        file.metadata()
-            .await
-            .map(|md| md.len() as usize)
-            .unwrap_or(0),
-    );
-    file.read_to_end(&mut file_data).await.unwrap();
-    drop(file);
-    let sha1_passed = check_sha1(&file_data, &hashes.sha1);
-    let sha512_passed = check_sha512(&file_data, &hashes.sha512);
-    if !(sha1_passed && sha512_passed) {
-        eprintln!("Deleting corrupted file {}", path.to_string_lossy());
-        tokio::fs::remove_file(path).await.unwrap()
-    }
-}
-
-fn check_sha1(data: &[u8], expected_hash: &[u8; 20]) -> bool {
-    let hash = Sha1::digest(data);
-    hash.as_slice() == expected_hash
-}
-
-fn check_sha512(data: &[u8], expected_hash: &[u8; 64]) -> bool {
-    let hash = Sha512::digest(data);
-    hash.as_slice() == expected_hash
 }
 
 async fn download_files(
