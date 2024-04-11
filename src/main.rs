@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use async_zip::read::fs::ZipFileReader;
+use async_zip::tokio::read::fs::ZipFileReader;
 use clap::Parser;
 use dialoguer::Confirm;
 use futures_util::{stream::StreamExt, TryStreamExt};
@@ -14,7 +14,7 @@ use reqwest::{Client, StatusCode};
 use schemas::{EnvRequirement, ModpackFile, ModrinthIndex};
 use thiserror::Error;
 use tokio::fs::{create_dir_all, File};
-use tokio_util::io::StreamReader;
+use tokio_util::{compat::FuturesAsyncReadCompatExt, io::StreamReader};
 use url::Url;
 
 mod hash_checks;
@@ -57,10 +57,10 @@ enum IndexReadError {
 async fn read_index_data(buf: &mut Vec<u8>, zip: &mut ZipFileReader) -> Result<(), IndexReadError> {
     let mut found = false;
     for (i, file) in zip.file().entries().iter().enumerate() {
-        if file.entry().filename() == "modrinth.index.json" {
+        if file.filename().as_bytes() == "modrinth.index.json".as_bytes() {
             found = true;
-            let mut entry = zip.entry(i).await?;
-            entry.read_to_end_checked(buf, file.entry()).await?;
+            let mut entry = zip.reader_with_entry(i).await?;
+            entry.read_to_end_checked(buf).await?;
             break;
         }
     }
@@ -101,19 +101,14 @@ fn sanitize_zip_filename(filename: &str) -> PathBuf {
 
 async fn extract_folder(zip: &mut ZipFileReader, folder_name: &str, output_dir: &Path) {
     for (i, entry) in zip.file().entries().iter().enumerate() {
-        let entry = entry.entry();
-        if entry.filename().starts_with(&format!("{folder_name}/")) {
-            println!("Extracting {}", entry.filename());
-            let zip_path = sanitize_zip_filename(
-                entry
-                    .filename()
-                    .strip_prefix(&format!("{folder_name}/"))
-                    .unwrap(),
-            );
+        let filename = entry.filename().as_str().unwrap();
+        if filename.starts_with(&format!("{folder_name}/")) {
+            println!("Extracting {filename}");
+            let zip_path =
+                sanitize_zip_filename(filename.strip_prefix(&format!("{folder_name}/")).unwrap());
             let zip_path = output_dir.join(zip_path);
             sanitize_path_check(&zip_path, output_dir);
-            let mut entry_reader = zip.entry(i).await.unwrap();
-            if entry.dir() {
+            if entry.dir().unwrap() {
                 if !zip_path.exists() {
                     create_dir_all(&zip_path).await.unwrap()
                 }
@@ -123,6 +118,7 @@ async fn extract_folder(zip: &mut ZipFileReader, folder_name: &str, output_dir: 
                     create_dir_all(parent).await.unwrap()
                 }
                 let mut out_file = File::create(zip_path).await.unwrap();
+                let mut entry_reader = zip.reader_with_entry(i).await.unwrap().compat();
                 tokio::io::copy(&mut entry_reader, &mut out_file)
                     .await
                     .unwrap();
