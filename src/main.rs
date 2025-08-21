@@ -46,6 +46,9 @@ struct CliParameters {
     /// See https://docs.modrinth.com/modpacks/format#downloads
     #[arg(long)]
     skip_host_check: bool,
+    /// Skip all confirmation prompts (unattended mode).
+    #[arg(short, long)]
+    unattended: bool,
 }
 
 #[derive(Debug, Error)]
@@ -268,7 +271,7 @@ async fn download_file(
     }
 }
 
-fn filter_file_list(files: &mut Vec<ModpackFile>, is_server: bool) {
+fn filter_file_list(files: &mut Vec<ModpackFile>, is_server: bool, unattended: bool) {
     files.retain(|file| match &file.env {
         None => true,
         Some(reqs) => {
@@ -280,18 +283,24 @@ fn filter_file_list(files: &mut Vec<ModpackFile>, is_server: bool) {
             match req {
                 EnvRequirement::Required => true,
                 EnvRequirement::Unsupported => false,
-                EnvRequirement::Optional => !matches!(
-                    Confirm::new()
-                        .with_prompt(format!(
-                            "Download optional {}?",
-                            file.path.to_string_lossy()
-                        ))
-                        .default(true)
-                        .wait_for_newline(false)
-                        .interact_opt()
-                        .unwrap(),
-                    Some(false) | None
-                ),
+                EnvRequirement::Optional => {
+                    if unattended {
+                        true // In unattended mode, download all optional files
+                    } else {
+                        !matches!(
+                            Confirm::new()
+                                .with_prompt(format!(
+                                    "Download optional {}?",
+                                    file.path.to_string_lossy()
+                                ))
+                                .default(true)
+                                .wait_for_newline(false)
+                                .interact_opt()
+                                .unwrap(),
+                            Some(false) | None
+                        )
+                    }
+                },
             }
         }
     })
@@ -340,22 +349,24 @@ async fn main() {
         println!("Downloading as a server version is enabled");
     }
 
-    filter_file_list(&mut modrinth_index_data.files, parameters.server);
+    filter_file_list(&mut modrinth_index_data.files, parameters.server, parameters.unattended);
 
     println!(
         "Total amount of files to download after filtering: {}",
         modrinth_index_data.files.len()
     );
 
-    match Confirm::new()
-        .with_prompt("Proceed to downloading?")
-        .default(true)
-        .wait_for_newline(true)
-        .interact_opt()
-        .unwrap()
-    {
-        Some(false) | None => return,
-        _ => (),
+    if !parameters.unattended {
+        match Confirm::new()
+            .with_prompt("Proceed to downloading?")
+            .default(true)
+            .wait_for_newline(true)
+            .interact_opt()
+            .unwrap()
+        {
+            Some(false) | None => return,
+            _ => (),
+        }
     }
 
     println!("Downloading files");
