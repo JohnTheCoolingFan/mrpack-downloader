@@ -1,6 +1,6 @@
 [package]
 name = "mrpack-downloader"
-version = "0.4.1"
+version = "0.4.2"
 edition = "2024"
 description = "Downloader for Modrinth modpacks (.mrpack files)"
 license = "MIT"
