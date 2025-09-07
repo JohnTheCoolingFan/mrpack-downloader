@@ -1,8 +1,8 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, fmt::Display, path::PathBuf};
 
+use convert_case::Casing;
 use semver::Version;
 use serde::Deserialize;
-use strum_macros::AsRefStr;
 use url::Url;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -25,7 +25,7 @@ impl ModrinthIndex {
         }
         println!("\nDependencies:");
         for (dep_id, dep_ver) in &self.dependencies {
-            println!("{}: {}", dep_id.as_ref(), dep_ver);
+            println!("{}: {}", dep_id, dep_ver);
         }
     }
 }
@@ -64,11 +64,27 @@ pub enum EnvRequirement {
     Unsupported,
 }
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Deserialize, AsRefStr)]
+impl Display for ModpackDependencyId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Minecraft => write!(f, "Minecraft"),
+            Self::Forge => write!(f, "Forge"),
+            Self::Neoforge => write!(f, "NeoForge"),
+            Self::FabricLoader => write!(f, "Fabric"),
+            Self::QuiltLoader => write!(f, "Quilt"),
+            Self::Other(name) => write!(f, "{}", name.to_case(convert_case::Case::Pascal)),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ModpackDependencyId {
     Minecraft,
     Forge,
+    Neoforge,
     FabricLoader,
     QuiltLoader,
+    #[serde(untagged)]
+    Other(String),
 }
