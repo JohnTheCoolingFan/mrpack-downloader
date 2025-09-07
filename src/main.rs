@@ -7,13 +7,13 @@ use std::{
 use async_zip::tokio::read::fs::ZipFileReader;
 use clap::Parser;
 use dialoguer::Confirm;
-use futures_util::{stream::StreamExt, TryStreamExt};
+use futures_util::{TryStreamExt, stream::StreamExt};
 use hash_checks::check_hashes;
 use indicatif::{MultiProgress, ProgressBar, ProgressDrawTarget, ProgressStyle};
 use reqwest::{Client, StatusCode};
 use schemas::{EnvRequirement, ModpackFile, ModrinthIndex};
 use thiserror::Error;
-use tokio::fs::{create_dir_all, File};
+use tokio::fs::{File, create_dir_all};
 use tokio_util::{compat::FuturesAsyncReadCompatExt, io::StreamReader};
 use url::Url;
 
@@ -26,6 +26,18 @@ const ALLOWED_HOSTS: [&str; 4] = [
     "raw.githubusercontent.com",
     "gitlab.com",
 ];
+
+fn prettify_bytes(bytes: u64) -> String {
+    if bytes > 1024 * 1024 * 1024 {
+        format!("{:.2} GB", bytes as f64 / 1024.0 / 1024.0 / 1024.0)
+    } else if bytes > 1024 * 1024 {
+        format!("{:.2} MB", bytes as f64 / 1024.0 / 1024.0)
+    } else if bytes > 1024 {
+        format!("{:.2} KB", bytes as f64 / 1024.0)
+    } else {
+        format!("{:.2} B", bytes)
+    }
+}
 
 #[derive(Debug, Clone, Parser)]
 #[command(author, version, about, long_about = None)]
@@ -223,12 +235,12 @@ async fn download_file(
 ) -> Result<(), FileDownloadError> {
     let pb = progress_bars.add(
         ProgressBar::with_draw_target(None, ProgressDrawTarget::stdout())
-            .with_message(format!("Downloading {}", path.to_string_lossy()))
-            .with_style(
-                ProgressStyle::default_bar()
-                .template("{msg}\n{spinner} [{elapsed_precise}] [{wide_bar}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})").expect("Incorrect template provided")
-                .progress_chars("#> ")
-            ),
+        .with_message(format!("Downloading {}", path.to_string_lossy()))
+        .with_style(
+            ProgressStyle::default_bar()
+            .template("{msg}\n{spinner} [{elapsed_precise}] [{wide_bar}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})").expect("Incorrect template provided")
+            .progress_chars("#> ")
+        ),
     );
 
     // The directories will be created in case the parent directory doesn't exist or the parent is
@@ -300,7 +312,7 @@ fn filter_file_list(files: &mut Vec<ModpackFile>, is_server: bool, unattended: b
                             Some(false) | None
                         )
                     }
-                },
+                }
             }
         }
     })
@@ -335,7 +347,10 @@ async fn main() {
                     &url.domain()
                         .expect("IP addresses are not allowed in download URLs"),
                 ) {
-                    panic!("Downloading from {} is not allowed. See https://docs.modrinth.com/modpacks/format#downloads", url.domain().unwrap());
+                    panic!(
+                        "Downloading from {} is not allowed. See https://docs.modrinth.com/modpacks/format#downloads",
+                        url.domain().unwrap()
+                    );
                 }
             }
         }
@@ -349,11 +364,26 @@ async fn main() {
         println!("Downloading as a server version is enabled");
     }
 
-    filter_file_list(&mut modrinth_index_data.files, parameters.server, parameters.unattended);
+    filter_file_list(
+        &mut modrinth_index_data.files,
+        parameters.server,
+        parameters.unattended,
+    );
 
     println!(
         "Total amount of files to download after filtering: {}",
         modrinth_index_data.files.len()
+    );
+
+    println!(
+        "Total download size: {}",
+        prettify_bytes(
+            modrinth_index_data
+                .files
+                .iter()
+                .map(|file| file.file_size as u64)
+                .sum()
+        )
     );
 
     if !parameters.unattended {
