@@ -201,9 +201,7 @@ async fn try_download_file(
         let mut out_file = File::create(path).await?;
         let stream = res.bytes_stream();
 
-        let stream_reader = StreamReader::new(
-            stream.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e)),
-        );
+        let stream_reader = StreamReader::new(stream.map_err(std::io::Error::other));
 
         let mut bar_reader = bar.wrap_async_read(stream_reader);
 

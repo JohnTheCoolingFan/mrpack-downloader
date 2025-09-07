@@ -8,7 +8,9 @@ use url::Url;
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModrinthIndex {
+    #[allow(unused)]
     pub format_version: u32,
+    #[allow(unused)]
     pub game: String,
     pub version_id: String,
     pub name: String,
@@ -47,6 +49,7 @@ pub struct FileHashes {
     #[serde(deserialize_with = "hex::deserialize")]
     pub sha512: [u8; 64],
     #[serde(flatten)]
+    #[allow(unused)]
     pub other_hashes: HashMap<String, String>,
 }
 
