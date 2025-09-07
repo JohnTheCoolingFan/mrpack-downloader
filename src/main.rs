@@ -348,7 +348,7 @@ async fn main() {
                         .expect("IP addresses are not allowed in download URLs"),
                 ) {
                     panic!(
-                        "Downloading from {} is not allowed. See https://docs.modrinth.com/modpacks/format#downloads",
+                        "Downloading from {} is not allowed. See https://support.modrinth.com/en/articles/8802351-modrinth-modpack-format-mrpack#h_e2af55e39e",
                         url.domain().unwrap()
                     );
                 }
