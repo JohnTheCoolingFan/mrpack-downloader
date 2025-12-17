@@ -6,6 +6,14 @@ use std::{
 use eframe::egui;
 use egui::{Color32, RichText, Vec2};
 
+// Color theme constants
+const BG_COLOR: Color32 = Color32::from_rgb(30, 30, 35);
+const TEXT_COLOR: Color32 = Color32::from_rgb(220, 220, 220);
+const PRIMARY_GREEN: Color32 = Color32::from_rgb(30, 180, 100);
+const INFO_BLUE: Color32 = Color32::from_rgb(100, 200, 255);
+const SUCCESS_GREEN: Color32 = Color32::from_rgb(0, 255, 0);
+const ERROR_RED: Color32 = Color32::from_rgb(255, 100, 100);
+
 #[derive(Clone, Debug)]
 pub enum DownloadState {
     Idle,
@@ -74,7 +82,7 @@ impl MrpackDownloaderApp {
             ui.heading(
                 RichText::new("🎮 Modrinth Modpack Downloader")
                     .size(32.0)
-                    .color(Color32::from_rgb(30, 180, 100))
+                    .color(PRIMARY_GREEN)
             );
             ui.label(
                 RichText::new("Download and install Modrinth modpacks with ease")
@@ -111,7 +119,7 @@ impl MrpackDownloaderApp {
                         ui.label("📦");
                         ui.label(
                             RichText::new(path.to_string_lossy())
-                                .color(Color32::from_rgb(100, 200, 255))
+                                .color(INFO_BLUE)
                         );
                     });
                 }
@@ -133,7 +141,7 @@ impl MrpackDownloaderApp {
                         ui.label("📂");
                         ui.label(
                             RichText::new(path.to_string_lossy())
-                                .color(Color32::from_rgb(100, 200, 255))
+                                .color(INFO_BLUE)
                         );
                     });
                 }
@@ -194,7 +202,7 @@ impl MrpackDownloaderApp {
 
                 ui.horizontal(|ui| {
                     ui.label(RichText::new("Name:").strong());
-                    ui.label(RichText::new(&info.name).color(Color32::from_rgb(100, 200, 255)));
+                    ui.label(RichText::new(&info.name).color(INFO_BLUE));
                 });
 
                 ui.horizontal(|ui| {
@@ -318,7 +326,7 @@ impl MrpackDownloaderApp {
                     ui.label(
                         RichText::new("✅ Download Complete!")
                             .size(16.0)
-                            .color(Color32::from_rgb(0, 200, 0))
+                            .color(SUCCESS_GREEN)
                     );
                     if ui.button(RichText::new("🔄 Reset").size(16.0)).clicked() {
                         *self.state.lock().unwrap() = DownloadState::Idle;
@@ -407,11 +415,11 @@ impl eframe::App for MrpackDownloaderApp {
         egui::CentralPanel::default()
             .frame(
                 egui::Frame::default()
-                    .fill(Color32::from_rgb(30, 30, 35))
+                    .fill(BG_COLOR)
                     .inner_margin(20.0)
             )
             .show(ctx, |ui| {
-                ui.visuals_mut().override_text_color = Some(Color32::from_rgb(220, 220, 220));
+                ui.visuals_mut().override_text_color = Some(TEXT_COLOR);
                 
                 self.render_header(ui);
                 ui.add_space(10.0);
@@ -436,7 +444,7 @@ impl eframe::App for MrpackDownloaderApp {
                                 ui.label(
                                     RichText::new("❌ Error")
                                         .size(18.0)
-                                        .color(Color32::from_rgb(255, 100, 100))
+                                        .color(ERROR_RED)
                                 );
                                 ui.label(msg);
                             });
@@ -447,7 +455,7 @@ impl eframe::App for MrpackDownloaderApp {
                                     ui.label(
                                         RichText::new("✅ Download Complete!")
                                             .size(24.0)
-                                            .color(Color32::from_rgb(0, 255, 0))
+                                            .color(SUCCESS_GREEN)
                                     );
                                     ui.label("Your modpack has been successfully downloaded and installed!");
                                 });
