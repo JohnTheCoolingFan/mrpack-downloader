@@ -52,7 +52,9 @@ gh release create v0.4.2-gui \
 
 ## Option 3: Automated Releases (Future)
 
-For future releases, tag your commit and push:
+> **Note**: The existing GitHub Actions workflow (`.github/workflows/cd.yml`) will need to be updated to support the new GUI dependencies and build optimizations before automated releases will work.
+
+For future releases after updating the workflow, tag your commit and push:
 
 ```bash
 git tag v0.4.3

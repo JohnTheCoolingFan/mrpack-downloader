@@ -39,7 +39,7 @@ Both Windows and Linux builds include:
 2. Click "Draft a new release"
 3. Fill in:
    - Tag: `v0.4.2-gui`
-   - Target: `copilot/add-detailed-gui-features`
+   - Target: `main` (or your default branch)
    - Title: `v0.4.2 - GUI Edition`
 4. Copy content from `RELEASE_NOTES.md` to description
 5. Upload these files from `releases/`:

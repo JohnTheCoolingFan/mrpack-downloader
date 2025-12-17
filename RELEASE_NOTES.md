@@ -114,8 +114,8 @@ sha256sum -c mrpack-downloader-linux-x64.sha256
 
 ## 🙏 Credits
 
-Original CLI tool by JohnTheCoolingFan
-GUI implementation and enhancements by GitHub Copilot
+Original CLI tool by [JohnTheCoolingFan](https://github.com/JohnTheCoolingFan)
+GUI implementation and enhancements contributed via pull request
 
 ## 📄 License
 

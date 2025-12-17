@@ -10,6 +10,13 @@ RELEASE_DIR="releases"
 echo "Building mrpack-downloader release v${VERSION}"
 echo "============================================"
 
+# Check for MinGW-w64 (required for Windows cross-compilation)
+if ! command -v x86_64-w64-mingw32-gcc &> /dev/null; then
+    echo "Warning: MinGW-w64 not found. Windows cross-compilation may fail."
+    echo "Install with: sudo apt-get install mingw-w64 (on Debian/Ubuntu)"
+    echo ""
+fi
+
 # Clean previous releases
 rm -rf $RELEASE_DIR
 mkdir -p $RELEASE_DIR
