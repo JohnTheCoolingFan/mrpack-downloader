@@ -1,0 +1,137 @@
+name: Release with GUI
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g., v0.4.2-gui)'
+        required: true
+        default: 'v0.4.2-gui'
+  push:
+    tags:
+      - "v*.*.*"
+      - "v*.*.*-*"
+
+jobs:
+  build-and-release:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive_name: linux-x64
+            extension: ""
+            
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive_name: windows-x64
+            extension: .exe
+        
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ matrix.target }}
+    
+    - name: Install dependencies (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libgtk-3-dev libssl-dev pkg-config
+    
+    - name: Build release
+      run: cargo build --release --target ${{ matrix.target }}
+    
+    - name: Prepare artifacts (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        cd target/${{ matrix.target }}/release
+        strip mrpack-downloader || true
+        tar -czf mrpack-downloader-${{ matrix.archive_name }}.tar.gz mrpack-downloader
+        sha256sum mrpack-downloader > mrpack-downloader-${{ matrix.archive_name }}.sha256
+        sha256sum mrpack-downloader-${{ matrix.archive_name }}.tar.gz >> mrpack-downloader-${{ matrix.archive_name }}.sha256
+    
+    - name: Prepare artifacts (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: bash
+      run: |
+        cd target/${{ matrix.target }}/release
+        7z a -tzip mrpack-downloader-${{ matrix.archive_name }}.zip mrpack-downloader.exe
+        sha256sum mrpack-downloader.exe > mrpack-downloader-${{ matrix.archive_name }}.sha256
+        sha256sum mrpack-downloader-${{ matrix.archive_name }}.zip >> mrpack-downloader-${{ matrix.archive_name }}.sha256
+    
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: mrpack-downloader-${{ matrix.archive_name }}
+        path: |
+          target/${{ matrix.target }}/release/mrpack-downloader-${{ matrix.archive_name }}*
+          target/${{ matrix.target }}/release/mrpack-downloader${{ matrix.extension }}
+  
+  create-release:
+    needs: build-and-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+    
+    - name: Display structure
+      run: ls -R artifacts/
+    
+    - name: Determine tag
+      id: tag
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+        else
+          echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Create Release Notes
+      run: |
+        if [ -f "RELEASE_NOTES.md" ]; then
+          cp RELEASE_NOTES.md release_notes.md
+        else
+          cat > release_notes.md << 'EOF'
+        # Release ${{ steps.tag.outputs.tag }}
+        
+        ## Changes
+        - Modern GUI with egui/eframe
+        - Native file selection dialogs
+        - Real-time progress tracking
+        - Cross-platform support (Windows + Linux)
+        - CLI mode fully preserved
+        
+        ## Downloads
+        - **Windows**: Download `mrpack-downloader-windows-x64.zip`
+        - **Linux**: Download `mrpack-downloader-linux-x64.tar.gz`
+        
+        Verify downloads using the `.sha256` files.
+        EOF
+        fi
+    
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ steps.tag.outputs.tag }}
+        name: Release ${{ steps.tag.outputs.tag }}
+        body_path: release_notes.md
+        draft: false
+        prerelease: false
+        files: |
+          artifacts/**/*.tar.gz
+          artifacts/**/*.zip
+          artifacts/**/*.sha256
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

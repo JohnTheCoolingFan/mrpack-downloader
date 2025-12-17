@@ -29,3 +29,12 @@ sha2 = "0.10.8"
 hex = { version = "0.4.3", features = ["serde"] }
 thiserror = "2.0.16"
 convert_case = "0.8.0"
+eframe = "0.29"
+egui = "0.29"
+rfd = "0.15"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
