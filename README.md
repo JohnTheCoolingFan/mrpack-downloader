@@ -12,8 +12,19 @@ Download Modrinth modpacks from mrpack files
 
 ## Installation
 
-### From Release
-Download the latest release binary from the [releases page](https://github.com/bayusegara27/mrpack-downloader/releases).
+### Pre-built Binaries (Recommended)
+
+Download pre-built binaries from the [releases page](https://github.com/bayusegara27/mrpack-downloader/releases).
+
+**Windows:**
+1. Download `mrpack-downloader-v0.4.2-windows-x64.zip`
+2. Extract the ZIP file
+3. Run `mrpack-downloader-windows-x64.exe`
+
+**Linux:**
+1. Download `mrpack-downloader-v0.4.2-linux-x64.tar.gz`
+2. Extract: `tar -xzf mrpack-downloader-v0.4.2-linux-x64.tar.gz`
+3. Run: `./mrpack-downloader-linux-x64`
 
 ### From Source
 ```bash
