@@ -109,8 +109,18 @@ fn main() {
 }
 
 async fn run_cli(parameters: CliParameters) {
-    let input_file = parameters.input_file.expect("Input file required for CLI mode");
-    let output_dir = parameters.output_dir.expect("Output directory required for CLI mode");
+    let input_file = parameters.input_file.unwrap_or_else(|| {
+        eprintln!("Error: Input .mrpack file is required when running in CLI mode.");
+        eprintln!("Usage: mrpack-downloader <input.mrpack> <output-dir>");
+        eprintln!("Or use: mrpack-downloader --gui to launch the graphical interface");
+        std::process::exit(1);
+    });
+    let output_dir = parameters.output_dir.unwrap_or_else(|| {
+        eprintln!("Error: Output directory is required when running in CLI mode.");
+        eprintln!("Usage: mrpack-downloader <input.mrpack> <output-dir>");
+        eprintln!("Or use: mrpack-downloader --gui to launch the graphical interface");
+        std::process::exit(1);
+    });
 
     let mut zip_file = ZipFileReader::new(&input_file).await.unwrap();
 

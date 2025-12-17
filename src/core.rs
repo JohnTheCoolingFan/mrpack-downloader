@@ -219,13 +219,13 @@ pub async fn download_file(
 
     let mut urls_iter = urls.iter();
 
-    // This loop tries all urls until one of them succedes or it runs out of urls. The iterator is
+    // This loop tries all urls until one of them succeeds or it runs out of urls. The iterator is
     // finite (fused) which guarantees that the loop will finish.
     loop {
         match urls_iter.next() {
             // Try next url in the list
             Some(url) => match try_download_file(&client, url, path, &pb).await {
-                // Downloads succeded, stop looping and return.
+                // Download succeeded, stop looping and return.
                 Ok(()) => {
                     pb.finish_with_message(format!(
                         "Downloaded {} from {}",
@@ -234,7 +234,7 @@ pub async fn download_file(
                     ));
                     break Ok(());
                 }
-                // An error occured. Report and go to the next url.
+                // An error occurred. Report and go to the next url.
                 Err(why) => {
                     eprintln!(
                         "Failed to download file {} from {url}: {why}",
