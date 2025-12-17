@@ -102,12 +102,12 @@ fn main() {
             eprintln!("Failed to launch GUI: {}", e);
         }
     } else {
-        // Run CLI mode
-        run_cli(parameters);
+        // Run CLI mode in tokio runtime
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(run_cli(parameters));
     }
 }
 
-#[tokio::main]
 async fn run_cli(parameters: CliParameters) {
     let input_file = parameters.input_file.expect("Input file required for CLI mode");
     let output_dir = parameters.output_dir.expect("Output directory required for CLI mode");
