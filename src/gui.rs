@@ -511,7 +511,7 @@ async fn perform_download(
     state: Arc<Mutex<DownloadState>>,
 ) -> Result<(), String> {
     use async_zip::tokio::read::fs::ZipFileReader;
-    use crate::core::{get_index_data, download_files, extract_folder, filter_file_list, ALLOWED_HOSTS};
+    use crate::core::{get_index_data, download_files_with_callback, extract_folder, filter_file_list, ALLOWED_HOSTS};
 
     let mut zip_file = ZipFileReader::new(input_file)
         .await
@@ -559,7 +559,19 @@ async fn perform_download(
         total_bytes,
     });
 
-    download_files(modrinth_index_data.clone(), &target_path, ignore_hashes, jobs)
+    // Create progress callback
+    let state_clone = state.clone();
+    let progress_callback = Box::new(move |current: usize, total: usize, file_name: String, downloaded: u64, total_bytes: u64| {
+        *state_clone.lock().unwrap() = DownloadState::Downloading(DownloadProgress {
+            current_file: current,
+            total_files: total,
+            current_file_name: file_name,
+            downloaded_bytes: downloaded,
+            total_bytes,
+        });
+    });
+
+    download_files_with_callback(modrinth_index_data.clone(), &target_path, ignore_hashes, jobs, Some(progress_callback))
         .await
         .map_err(|e| format!("Download failed: {}", e))?;
 

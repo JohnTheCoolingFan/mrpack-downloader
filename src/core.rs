@@ -114,14 +114,32 @@ pub async fn extract_folder(zip: &mut ZipFileReader, folder_name: &str, output_d
     }
 }
 
+pub type ProgressCallback = Option<Box<dyn Fn(usize, usize, String, u64, u64) + Send + Sync>>;
+
 pub async fn download_files(
     index: ModrinthIndex,
     output_dir: &Path,
     ignore_hashes: bool,
     jobs: usize,
 ) -> Result<(), FileDownloadError> {
+    download_files_with_callback(index, output_dir, ignore_hashes, jobs, None).await
+}
+
+pub async fn download_files_with_callback(
+    index: ModrinthIndex,
+    output_dir: &Path,
+    ignore_hashes: bool,
+    jobs: usize,
+    progress_callback: ProgressCallback,
+) -> Result<(), FileDownloadError> {
     let mpb = MultiProgress::with_draw_target(ProgressDrawTarget::stdout());
     let client = Client::new();
+    let total_files = index.files.len();
+    let completed_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let total_bytes: u64 = index.files.iter().map(|f| f.file_size as u64).sum();
+    let downloaded_bytes = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let progress_callback = std::sync::Arc::new(progress_callback);
+    
     let files_stream = futures::stream::iter(index.files);
     files_stream
         .map::<Result<_, FileDownloadError>, _>(Ok)
@@ -129,12 +147,26 @@ pub async fn download_files(
             let client_clone = client.clone();
             let mpb_clone = mpb.clone();
             let path = output_dir.join(&file.path);
+            let file_size = file.file_size as u64;
+            let completed_count = completed_count.clone();
+            let downloaded_bytes = downloaded_bytes.clone();
+            let progress_callback = progress_callback.clone();
+            let file_path = file.path.clone();
             sanitize_path_check(&path, output_dir);
             async move {
                 download_file(client_clone, &file.downloads, &path, mpb_clone).await?;
                 if !ignore_hashes {
                     check_hashes(file.hashes, path).await;
                 };
+                
+                // Update progress
+                let current = completed_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+                let current_bytes = downloaded_bytes.fetch_add(file_size, std::sync::atomic::Ordering::SeqCst) + file_size;
+                
+                if let Some(ref callback) = *progress_callback {
+                    callback(current, total_files, file_path.to_string_lossy().to_string(), current_bytes, total_bytes);
+                }
+                
                 Ok(())
             }
         })
