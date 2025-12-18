@@ -151,7 +151,7 @@ pub async fn download_files_with_callback(
             let completed_count = completed_count.clone();
             let downloaded_bytes = downloaded_bytes.clone();
             let progress_callback = progress_callback.clone();
-            let file_path = file.path.clone();
+            let file_path_str = file.path.to_string_lossy().to_string();
             sanitize_path_check(&path, output_dir);
             async move {
                 download_file(client_clone, &file.downloads, &path, mpb_clone).await?;
@@ -164,7 +164,7 @@ pub async fn download_files_with_callback(
                 let current_bytes = downloaded_bytes.fetch_add(file_size, std::sync::atomic::Ordering::SeqCst) + file_size;
                 
                 if let Some(ref callback) = *progress_callback {
-                    callback(current, total_files, file_path.to_string_lossy().to_string(), current_bytes, total_bytes);
+                    callback(current, total_files, file_path_str, current_bytes, total_bytes);
                 }
                 
                 Ok(())
