@@ -4,7 +4,7 @@
 
 set -e
 
-VERSION=${1:-"v0.4.2-gui"}
+VERSION=${1:-"v0.5.0"}
 REPO="bayusegara27/mrpack-downloader"
 
 echo "╔══════════════════════════════════════════════════════════════╗"
@@ -36,7 +36,13 @@ echo ""
 if [ ! -f "RELEASE_NOTES.md" ]; then
     echo "⚠️  Warning: RELEASE_NOTES.md not found, creating basic release notes"
     cat > /tmp/release_notes.md << 'EOF'
-# Release with Modern GUI
+# Release v0.5.0 - CurseForge Support
+
+## 🎉 New Features
+- **CurseForge Modpack Support** - Now supports downloading CurseForge modpacks (.zip)
+- **Automatic Format Detection** - Automatically detects whether the modpack is Modrinth or CurseForge
+- **Mod Loader Download** - Automatically downloads Forge/Fabric installer for CurseForge modpacks
+- **Updated GUI** - Shows modpack format indicator (🟢 Modrinth / 🟧 CurseForge)
 
 ## Features
 - Modern GUI with egui/eframe
@@ -44,6 +50,7 @@ if [ ! -f "RELEASE_NOTES.md" ]; then
 - Real-time progress tracking
 - Cross-platform support (Windows + Linux)
 - CLI mode fully preserved
+- Support for both Modrinth (.mrpack) and CurseForge (.zip) modpacks
 
 ## Downloads
 Download the appropriate file for your platform and verify with the `.sha256` checksum.
@@ -90,8 +97,8 @@ else
     
     # Check for required files
     REQUIRED_FILES=(
-        "releases/mrpack-downloader-v0.4.2-windows-x64.zip"
-        "releases/mrpack-downloader-v0.4.2-linux-x64.tar.gz"
+        "releases/mrpack-downloader-v0.5.0-windows-x64.zip"
+        "releases/mrpack-downloader-v0.5.0-linux-x64.tar.gz"
     )
     
     for file in "${REQUIRED_FILES[@]}"; do

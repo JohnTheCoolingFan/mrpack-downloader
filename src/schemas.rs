@@ -91,3 +91,82 @@ pub enum ModpackDependencyId {
     #[serde(untagged)]
     Other(String),
 }
+
+// ==================== CurseForge Modpack Schemas ====================
+
+/// CurseForge manifest.json structure
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CurseForgeManifest {
+    pub minecraft: CurseForgeMinecraft,
+    pub manifest_type: String,
+    pub manifest_version: u32,
+    pub name: String,
+    pub version: String,
+    pub author: Option<String>,
+    pub files: Vec<CurseForgeFile>,
+    pub overrides: Option<String>,
+}
+
+impl CurseForgeManifest {
+    pub fn print_info(&self) {
+        println!("{} version {}", self.name, self.version);
+        if let Some(author) = &self.author {
+            println!("Author: {}", author);
+        }
+        println!("\nMinecraft: {}", self.minecraft.version);
+        println!("Mod Loaders:");
+        for loader in &self.minecraft.mod_loaders {
+            let primary_str = if loader.primary { " (primary)" } else { "" };
+            println!("  {}{}", loader.id, primary_str);
+        }
+        println!("\nTotal files: {}", self.files.len());
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CurseForgeMinecraft {
+    pub version: String,
+    pub mod_loaders: Vec<CurseForgeModLoader>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CurseForgeModLoader {
+    pub id: String,
+    pub primary: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CurseForgeFile {
+    #[serde(rename = "projectID")]
+    pub project_id: u64,
+    #[serde(rename = "fileID")]
+    pub file_id: u64,
+    pub required: bool,
+}
+
+/// Response from CurseForge API (cfwidget)
+#[derive(Debug, Clone, Deserialize)]
+pub struct CurseForgeProjectInfo {
+    pub id: u64,
+    pub title: String,
+    #[serde(rename = "type")]
+    pub project_type: String,
+    pub files: Vec<CurseForgeProjectFile>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CurseForgeProjectFile {
+    pub id: u64,
+    pub name: String,
+    pub filesize: u64,
+}
+
+/// Enum to represent modpack format type
+#[derive(Debug, Clone, PartialEq)]
+pub enum ModpackFormat {
+    Modrinth,
+    CurseForge,
+}

@@ -106,12 +106,18 @@ jobs:
           cat > release_notes.md << 'EOF'
         # Release ${{ steps.tag.outputs.tag }}
         
-        ## Changes
+        ## 🎉 New Features
+        - **CurseForge Modpack Support** - Now supports downloading CurseForge modpacks (.zip)
+        - **Automatic Format Detection** - Detects Modrinth or CurseForge format automatically
+        - **Mod Loader Download** - Downloads Forge/Fabric installer for CurseForge modpacks
+        
+        ## Features
         - Modern GUI with egui/eframe
         - Native file selection dialogs
         - Real-time progress tracking
         - Cross-platform support (Windows + Linux)
         - CLI mode fully preserved
+        - Support for both Modrinth (.mrpack) and CurseForge (.zip) modpacks
         
         ## Downloads
         - **Windows**: Download `mrpack-downloader-windows-x64.zip`

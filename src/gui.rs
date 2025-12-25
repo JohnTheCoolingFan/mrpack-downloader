@@ -32,6 +32,7 @@ pub struct ModpackInfo {
     pub dependencies: Vec<(String, String)>,
     pub total_files: usize,
     pub total_size: u64,
+    pub format: crate::schemas::ModpackFormat,
 }
 
 #[derive(Clone, Debug)]
@@ -80,12 +81,12 @@ impl MrpackDownloaderApp {
         ui.vertical_centered(|ui| {
             ui.add_space(10.0);
             ui.heading(
-                RichText::new("🎮 Modrinth Modpack Downloader")
+                RichText::new("🎮 Modpack Downloader")
                     .size(32.0)
                     .color(PRIMARY_GREEN)
             );
             ui.label(
-                RichText::new("Download and install Modrinth modpacks with ease")
+                RichText::new("Download and install Modrinth (.mrpack) and CurseForge (.zip) modpacks")
                     .size(14.0)
                     .color(Color32::GRAY)
             );
@@ -103,10 +104,12 @@ impl MrpackDownloaderApp {
 
                 // Input file selection
                 ui.horizontal(|ui| {
-                    ui.label("Modpack file (.mrpack):");
+                    ui.label("Modpack file (.mrpack or .zip):");
                     if ui.button("Browse...").clicked() {
                         if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("Modpack Files", &["mrpack", "zip"])
                             .add_filter("Modrinth Modpack", &["mrpack"])
+                            .add_filter("CurseForge Modpack", &["zip"])
                             .pick_file()
                         {
                             self.input_file = Some(path);
@@ -201,6 +204,15 @@ impl MrpackDownloaderApp {
                 ui.add_space(5.0);
 
                 ui.horizontal(|ui| {
+                    ui.label(RichText::new("Format:").strong());
+                    let format_text = match info.format {
+                        crate::schemas::ModpackFormat::Modrinth => "🟢 Modrinth (.mrpack)",
+                        crate::schemas::ModpackFormat::CurseForge => "🟧 CurseForge (.zip)",
+                    };
+                    ui.label(RichText::new(format_text).color(INFO_BLUE));
+                });
+
+                ui.horizontal(|ui| {
                     ui.label(RichText::new("Name:").strong());
                     ui.label(RichText::new(&info.name).color(INFO_BLUE));
                 });
@@ -231,10 +243,12 @@ impl MrpackDownloaderApp {
                     ui.label(format!("{}", info.total_files));
                 });
 
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new("Total size:").strong());
-                    ui.label(crate::core::prettify_bytes(info.total_size));
-                });
+                if info.total_size > 0 {
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new("Total size:").strong());
+                        ui.label(crate::core::prettify_bytes(info.total_size));
+                    });
+                }
             });
         });
     }
@@ -473,31 +487,77 @@ impl eframe::App for MrpackDownloaderApp {
 async fn load_modpack_info(input_file: &PathBuf) -> Result<ModpackInfo, String> {
     use async_zip::tokio::read::fs::ZipFileReader;
     use crate::core::get_index_data;
+    use crate::curseforge::{read_curseforge_manifest, is_curseforge_modpack, is_modrinth_modpack};
 
     let mut zip_file = ZipFileReader::new(input_file)
         .await
         .map_err(|e| format!("Failed to open zip file: {}", e))?;
 
-    let index = get_index_data(&mut zip_file)
-        .await
-        .map_err(|e| format!("Failed to read index: {}", e))?;
+    // Detect modpack format
+    let is_cf = is_curseforge_modpack(&mut zip_file).await;
+    let is_mr = is_modrinth_modpack(&mut zip_file).await;
 
-    let total_size: u64 = index.files.iter().map(|f| f.file_size as u64).sum();
-    
-    let dependencies: Vec<(String, String)> = index
-        .dependencies
-        .iter()
-        .map(|(k, v)| (format!("{}", k), v.to_string()))
-        .collect();
+    if is_cf {
+        // CurseForge modpack
+        let manifest = read_curseforge_manifest(&mut zip_file)
+            .await
+            .map_err(|e| format!("Failed to read CurseForge manifest: {}", e))?;
 
-    Ok(ModpackInfo {
-        name: index.name.clone(),
-        version: index.version_id.clone(),
-        summary: index.summary.clone(),
-        dependencies,
-        total_files: index.files.len(),
-        total_size,
-    })
+        let dependencies: Vec<(String, String)> = manifest.minecraft.mod_loaders
+            .iter()
+            .map(|loader| {
+                let name = if loader.id.starts_with("forge-") {
+                    "Forge".to_string()
+                } else if loader.id.starts_with("fabric") {
+                    "Fabric".to_string()
+                } else if loader.id.starts_with("neoforge") {
+                    "NeoForge".to_string()
+                } else {
+                    loader.id.clone()
+                };
+                let version = loader.id.split('-').last().unwrap_or(&loader.id).to_string();
+                (name, version)
+            })
+            .collect();
+
+        let mut deps = vec![("Minecraft".to_string(), manifest.minecraft.version.clone())];
+        deps.extend(dependencies);
+
+        Ok(ModpackInfo {
+            name: manifest.name,
+            version: manifest.version,
+            summary: manifest.author.map(|a| format!("by {}", a)),
+            dependencies: deps,
+            total_files: manifest.files.len(),
+            total_size: 0, // CurseForge doesn't provide total size upfront
+            format: crate::schemas::ModpackFormat::CurseForge,
+        })
+    } else if is_mr {
+        // Modrinth modpack
+        let index = get_index_data(&mut zip_file)
+            .await
+            .map_err(|e| format!("Failed to read index: {}", e))?;
+
+        let total_size: u64 = index.files.iter().map(|f| f.file_size as u64).sum();
+        
+        let dependencies: Vec<(String, String)> = index
+            .dependencies
+            .iter()
+            .map(|(k, v)| (format!("{}", k), v.to_string()))
+            .collect();
+
+        Ok(ModpackInfo {
+            name: index.name.clone(),
+            version: index.version_id.clone(),
+            summary: index.summary.clone(),
+            dependencies,
+            total_files: index.files.len(),
+            total_size,
+            format: crate::schemas::ModpackFormat::Modrinth,
+        })
+    } else {
+        Err("Could not detect modpack format. Expected modrinth.index.json or manifest.json".to_string())
+    }
 }
 
 async fn perform_download(
@@ -512,74 +572,132 @@ async fn perform_download(
 ) -> Result<(), String> {
     use async_zip::tokio::read::fs::ZipFileReader;
     use crate::core::{get_index_data, download_files_with_callback, extract_folder, filter_file_list, ALLOWED_HOSTS};
+    use crate::curseforge::{read_curseforge_manifest, download_curseforge_files, extract_curseforge_overrides, download_mod_loader, is_curseforge_modpack, is_modrinth_modpack};
+
+    // Create output directory if it doesn't exist
+    if !output_dir.exists() {
+        tokio::fs::create_dir_all(output_dir)
+            .await
+            .map_err(|e| format!("Failed to create output directory: {}", e))?;
+    }
 
     let mut zip_file = ZipFileReader::new(input_file)
         .await
         .map_err(|e| format!("Failed to open zip file: {}", e))?;
 
-    let mut modrinth_index_data = get_index_data(&mut zip_file)
-        .await
-        .map_err(|e| format!("Failed to read index: {}", e))?;
-
-    // Host check
-    if !skip_host_check {
-        for file in modrinth_index_data.files.iter() {
-            for url in file.downloads.iter() {
-                if !ALLOWED_HOSTS.contains(
-                    &url.domain()
-                        .ok_or("IP addresses are not allowed in download URLs")?,
-                ) {
-                    return Err(format!(
-                        "Downloading from {} is not allowed.",
-                        url.domain().unwrap()
-                    ));
-                }
-            }
-        }
-    }
+    // Detect modpack format
+    let is_cf = is_curseforge_modpack(&mut zip_file).await;
+    let is_mr = is_modrinth_modpack(&mut zip_file).await;
 
     let target_path = output_dir
         .canonicalize()
         .map_err(|e| format!("Failed to canonicalize output path: {}", e))?;
 
-    filter_file_list(
-        &mut modrinth_index_data.files,
-        is_server,
-        include_optional,
-    );
+    if is_cf {
+        // CurseForge modpack download
+        let manifest = read_curseforge_manifest(&mut zip_file)
+            .await
+            .map_err(|e| format!("Failed to read CurseForge manifest: {}", e))?;
 
-    let total_files = modrinth_index_data.files.len();
-    let total_bytes: u64 = modrinth_index_data.files.iter().map(|f| f.file_size as u64).sum();
+        let total_files = manifest.files.len();
 
-    *state.lock().unwrap() = DownloadState::Downloading(DownloadProgress {
-        current_file: 0,
-        total_files,
-        current_file_name: String::from("Starting..."),
-        downloaded_bytes: 0,
-        total_bytes,
-    });
+        *state.lock().unwrap() = DownloadState::Downloading(DownloadProgress {
+            current_file: 0,
+            total_files,
+            current_file_name: String::from("Starting CurseForge download..."),
+            downloaded_bytes: 0,
+            total_bytes: 0,
+        });
 
-    // Create progress callback
-    let state_clone = state.clone();
-    let progress_callback = Box::new(move |current: usize, total: usize, file_name: String, downloaded: u64, total_bytes: u64| {
-        *state_clone.lock().unwrap() = DownloadState::Downloading(DownloadProgress {
-            current_file: current,
-            total_files: total,
-            current_file_name: file_name,
-            downloaded_bytes: downloaded,
+        // Create progress callback
+        let state_clone = state.clone();
+        let progress_callback = Box::new(move |current: usize, total: usize, file_name: String, downloaded: u64, total_bytes: u64| {
+            *state_clone.lock().unwrap() = DownloadState::Downloading(DownloadProgress {
+                current_file: current,
+                total_files: total,
+                current_file_name: file_name,
+                downloaded_bytes: downloaded,
+                total_bytes,
+            });
+        });
+
+        download_curseforge_files(&manifest, &target_path, jobs, Some(progress_callback))
+            .await
+            .map_err(|e| format!("CurseForge download failed: {}", e))?;
+
+        // Extract overrides
+        let overrides = manifest.overrides.as_deref().unwrap_or("overrides");
+        extract_curseforge_overrides(&mut zip_file, overrides, &target_path).await;
+
+        // Download mod loader
+        if let Err(e) = download_mod_loader(&manifest, &target_path).await {
+            eprintln!("Warning: Failed to download mod loader: {}", e);
+        }
+
+    } else if is_mr {
+        // Modrinth modpack download
+        let mut modrinth_index_data = get_index_data(&mut zip_file)
+            .await
+            .map_err(|e| format!("Failed to read index: {}", e))?;
+
+        // Host check
+        if !skip_host_check {
+            for file in modrinth_index_data.files.iter() {
+                for url in file.downloads.iter() {
+                    if !ALLOWED_HOSTS.contains(
+                        &url.domain()
+                            .ok_or("IP addresses are not allowed in download URLs")?,
+                    ) {
+                        return Err(format!(
+                            "Downloading from {} is not allowed.",
+                            url.domain().unwrap()
+                        ));
+                    }
+                }
+            }
+        }
+
+        filter_file_list(
+            &mut modrinth_index_data.files,
+            is_server,
+            include_optional,
+        );
+
+        let total_files = modrinth_index_data.files.len();
+        let total_bytes: u64 = modrinth_index_data.files.iter().map(|f| f.file_size as u64).sum();
+
+        *state.lock().unwrap() = DownloadState::Downloading(DownloadProgress {
+            current_file: 0,
+            total_files,
+            current_file_name: String::from("Starting..."),
+            downloaded_bytes: 0,
             total_bytes,
         });
-    });
 
-    download_files_with_callback(modrinth_index_data.clone(), &target_path, ignore_hashes, jobs, Some(progress_callback))
-        .await
-        .map_err(|e| format!("Download failed: {}", e))?;
+        // Create progress callback
+        let state_clone = state.clone();
+        let progress_callback = Box::new(move |current: usize, total: usize, file_name: String, downloaded: u64, total_bytes: u64| {
+            *state_clone.lock().unwrap() = DownloadState::Downloading(DownloadProgress {
+                current_file: current,
+                total_files: total,
+                current_file_name: file_name,
+                downloaded_bytes: downloaded,
+                total_bytes,
+            });
+        });
 
-    extract_folder(&mut zip_file, "overrides", &target_path).await;
-    if is_server {
-        extract_folder(&mut zip_file, "overrides-server", &target_path).await;
+        download_files_with_callback(modrinth_index_data.clone(), &target_path, ignore_hashes, jobs, Some(progress_callback))
+            .await
+            .map_err(|e| format!("Download failed: {}", e))?;
+
+        extract_folder(&mut zip_file, "overrides", &target_path).await;
+        if is_server {
+            extract_folder(&mut zip_file, "overrides-server", &target_path).await;
+        } else {
+            extract_folder(&mut zip_file, "overrides-client", &target_path).await;
+        }
     } else {
-        extract_folder(&mut zip_file, "overrides-client", &target_path).await;
+        return Err("Could not detect modpack format".to_string());
     }
 
     Ok(())

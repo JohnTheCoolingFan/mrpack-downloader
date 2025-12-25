@@ -1,8 +1,8 @@
 [package]
 name = "mrpack-downloader"
-version = "0.4.2"
+version = "0.5.0"
 edition = "2024"
-description = "Downloader for Modrinth modpacks (.mrpack files)"
+description = "Downloader for Modrinth (.mrpack) and CurseForge (.zip) modpacks"
 license = "MIT"
 repository = "https://github.com/JohnTheCoolingFan/mrpack-downloader"
 authors = ["Jonh The Cooling Fan <ivan8215145640@gmail.com>"]
@@ -12,7 +12,7 @@ homepage = "https://discord.gg/rqkaeYJhzS"
 
 [dependencies]
 async_zip = { version = "0.0.18", features = ["tokio", "tokio-fs", "deflate"] }
-reqwest = { version = "0.12.3", features = ["stream"] }
+reqwest = { version = "0.12.3", features = ["stream", "json"] }
 tokio = { version = "1.37.0", features = ["full"] }
 tokio-util = { version = "0.7.10", features = ["full"] }
 clap = { version = "4.1", features = ["derive"] }
