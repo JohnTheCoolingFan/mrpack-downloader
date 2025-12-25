@@ -14,6 +14,7 @@ mod hash_checks;
 mod schemas;
 mod core;
 mod gui;
+mod curseforge;
 
 #[derive(Debug, Clone, Parser)]
 #[command(author, version, about, long_about = None)]
@@ -109,22 +110,98 @@ fn main() {
 }
 
 async fn run_cli(parameters: CliParameters) {
-    let input_file = parameters.input_file.unwrap_or_else(|| {
-        eprintln!("Error: Input .mrpack file is required when running in CLI mode.");
-        eprintln!("Usage: mrpack-downloader <input.mrpack> <output-dir>");
+    let input_file = parameters.input_file.clone().unwrap_or_else(|| {
+        eprintln!("Error: Input .mrpack or .zip file is required when running in CLI mode.");
+        eprintln!("Usage: mrpack-downloader <input.mrpack|input.zip> <output-dir>");
         eprintln!("Or use: mrpack-downloader --gui to launch the graphical interface");
         std::process::exit(1);
     });
-    let output_dir = parameters.output_dir.unwrap_or_else(|| {
+    let output_dir = parameters.output_dir.clone().unwrap_or_else(|| {
         eprintln!("Error: Output directory is required when running in CLI mode.");
-        eprintln!("Usage: mrpack-downloader <input.mrpack> <output-dir>");
+        eprintln!("Usage: mrpack-downloader <input.mrpack|input.zip> <output-dir>");
         eprintln!("Or use: mrpack-downloader --gui to launch the graphical interface");
         std::process::exit(1);
     });
 
     let mut zip_file = ZipFileReader::new(&input_file).await.unwrap();
 
-    let mut modrinth_index_data = get_index_data(&mut zip_file).await.unwrap();
+    // Detect modpack format
+    let is_curseforge = curseforge::is_curseforge_modpack(&mut zip_file).await;
+    let is_modrinth = curseforge::is_modrinth_modpack(&mut zip_file).await;
+
+    // Create output directory if it doesn't exist
+    if !output_dir.exists() {
+        tokio::fs::create_dir_all(&output_dir).await.unwrap();
+    }
+
+    let target_path = output_dir.canonicalize().unwrap();
+
+    if is_curseforge {
+        // CurseForge modpack
+        println!("Detected CurseForge modpack format");
+        run_curseforge_cli(&mut zip_file, &target_path, &parameters).await;
+    } else if is_modrinth {
+        // Modrinth modpack
+        println!("Detected Modrinth modpack format");
+        run_modrinth_cli(&mut zip_file, &target_path, &parameters).await;
+    } else {
+        eprintln!("Error: Could not detect modpack format.");
+        eprintln!("The file should contain either 'modrinth.index.json' (Modrinth) or 'manifest.json' (CurseForge).");
+        std::process::exit(1);
+    }
+}
+
+async fn run_curseforge_cli(zip_file: &mut ZipFileReader, target_path: &std::path::Path, parameters: &CliParameters) {
+    let manifest = curseforge::read_curseforge_manifest(zip_file).await.unwrap();
+    
+    manifest.print_info();
+
+    println!(
+        "\nTotal files to download: {}",
+        manifest.files.len()
+    );
+
+    if !parameters.unattended {
+        match Confirm::new()
+            .with_prompt("Proceed to downloading?")
+            .default(true)
+            .wait_for_newline(true)
+            .interact_opt()
+            .unwrap()
+        {
+            Some(false) | None => return,
+            _ => (),
+        }
+    }
+
+    println!("\nDownloading files...");
+    if let Err(why) = curseforge::download_curseforge_files(
+        &manifest,
+        target_path,
+        parameters.jobs.get(),
+        None,
+    )
+    .await
+    {
+        panic!("Download failed: {why}");
+    }
+
+    println!("\nExtracting overrides...");
+    let overrides = manifest.overrides.as_deref().unwrap_or("overrides");
+    curseforge::extract_curseforge_overrides(zip_file, overrides, target_path).await;
+
+    println!("\nDownloading mod loader...");
+    match curseforge::download_mod_loader(&manifest, target_path).await {
+        Ok(Some(msg)) => println!("{}", msg),
+        Ok(None) => println!("No mod loader specified"),
+        Err(e) => eprintln!("Warning: Failed to download mod loader: {}", e),
+    }
+
+    println!("\n✅ {} v{} downloaded successfully!", manifest.name, manifest.version);
+}
+
+async fn run_modrinth_cli(zip_file: &mut ZipFileReader, target_path: &std::path::Path, parameters: &CliParameters) {
+    let mut modrinth_index_data = get_index_data(zip_file).await.unwrap();
     if !parameters.skip_host_check {
         for file in modrinth_index_data.files.iter() {
             for url in file.downloads.iter() {
@@ -140,8 +217,6 @@ async fn run_cli(parameters: CliParameters) {
             }
         }
     }
-
-    let target_path = output_dir.canonicalize().unwrap();
 
     modrinth_index_data.print_info();
 
@@ -187,7 +262,7 @@ async fn run_cli(parameters: CliParameters) {
     println!("Downloading files");
     if let Err(why) = download_files(
         modrinth_index_data,
-        &target_path,
+        target_path,
         parameters.ignore_hashes,
         parameters.jobs.get(),
     )
@@ -197,10 +272,10 @@ async fn run_cli(parameters: CliParameters) {
     }
 
     println!("Extracting additional files (overrides)");
-    extract_folder(&mut zip_file, "overrides", &target_path).await;
+    extract_folder(zip_file, "overrides", target_path).await;
     if parameters.server {
-        extract_folder(&mut zip_file, "overrides-server", &target_path).await;
+        extract_folder(zip_file, "overrides-server", target_path).await;
     } else {
-        extract_folder(&mut zip_file, "overrides-client", &target_path).await;
+        extract_folder(zip_file, "overrides-client", target_path).await;
     }
 }
