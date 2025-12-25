@@ -1,0 +1,185 @@
+# 🟧 curseforge-modpack-downloader
+
+## Simple Python application for downloading and updating CurseForge modpacks
+
+> This program allows you to download and **update** existing mod packs (ex. for Minecraft)
+> Now available with a **graphical user interface (GUI)** for easier use!
+
+----------
+
+## 🖼️ GUI Version
+
+The GUI version provides a user-friendly interface with:
+- 📁 File browser for selecting modpack ZIP files
+- 🌐 Direct URL download support
+- 📂 Destination folder selection
+- ⚙️ Configurable options for handling file conflicts
+- 📊 Progress bar with real-time status
+- 📝 Detailed log viewer
+
+### Screenshot
+
+![CurseForge Modpack Downloader GUI](https://github.com/user-attachments/assets/72648492-f66a-4c6d-b0e9-c310ea8ff5ae)
+
+### Download GUI Version
+
+Download the latest release from: <https://github.com/F33RNI/curseforge-modpack-downloader/releases/latest>
+
+Look for files named:
+- `curseforge-modpack-downloader-gui-windows-amd64-x.x.x.exe` (Windows)
+- `curseforge-modpack-downloader-gui-linux-x86_64-x.x.x` (Linux)
+
+----------
+
+## 🏗️ Get started (CLI Version)
+
+### Download from releases
+
+<https://github.com/F33RNI/curseforge-modpack-downloader/releases/latest>
+
+### Build using PyInstaller
+
+```shell
+# Clone repo
+git clone https://github.com/F33RNI/curseforge-modpack-downloader
+cd curseforge-modpack-downloader
+
+# Create and activate virtual environment
+python -m venv venv
+source venv/bin/activate
+
+# Install PyInstaller
+pip install pyinstaller
+
+# Build CLI version
+pyinstaller main.spec
+
+# Build GUI version
+pyinstaller gui.spec
+```
+
+> Built files will be inside `dist` directory
+
+### Run as python script
+
+```shell
+# Clone repo
+git clone https://github.com/F33RNI/curseforge-modpack-downloader
+cd curseforge-modpack-downloader
+
+# Run script
+python main.py -h
+```
+
+----------
+
+## 📃 Usage
+
+```text
+usage: curseforge-modpack-downloader [-h] [--user-agent USER_AGENT] [-s | -r | -o] [-v] zip_path_or_url destination_dir
+
+Simple zero-dependency Python script for downloading and updating CurseForge modpacks
+
+positional arguments:
+  zip_path_or_url       Path to downloaded modpack zip-file or direct URL to download
+  destination_dir       destination path (ex. /home/username/.minecraft/versions/MyModPack/)
+
+options:
+  -h, --help            show this help message and exit
+  --user-agent USER_AGENT
+                        user agent for https://api.cfwidget.com/{project_id} (default: Mozilla/5.0 (Windows NT 10.0;
+                        Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36)
+  -s, --skip            automatically skip existing extra files without overwriting them (default: ask user)
+  -r, --rename          automatically rename existing extra files into .old without overwriting them (default: ask
+                        user)
+  -o, --overwrite       automatically overwrite existing extra files (default: ask user)
+  -v, --version         show program's version number and exit
+```
+
+----------
+
+## 📝 Example
+
+> Replace <https://www.curseforge.com/api/v1/mods/123456/files/1234567/download> with actual direct download link. You can get it by right-clinking on "If your download didn’t start, **try again**" and copying link into clipboard
+
+```shell
+$ dist/curseforge-modpack-downloader-linux-x86_64-1.3.0 https://www.curseforge.com/api/v1/mods/123456/files/1234567/download /home/test/.minecraft/versions/MyTestModPack
+[2024-04-24 21:44:26,354] [INFO] [main] curseforge-modpack-downloader v1.3.0
+[2024-04-24 21:44:26,354] [INFO] [main] https://github.com/F33RNI/curseforge-modpack-downloader
+[2024-04-24 21:44:26,354] [INFO] [main] Working directory: /tmp/tmpqlzg847a
+[2024-04-24 21:44:26,354] [INFO] [open_or_download] Downloading https://www.curseforge.com/api/v1/mods/123456/files/1234567/download
+[2024-04-24 21:44:28,328] [INFO] [unzip_modpack] Extracting archive
+[2024-04-24 21:44:28,601] [INFO] [unzip_modpack] Trying to read and parse manifest.json
+[2024-04-24 21:44:28,601] [INFO] [unzip_modpack] Found 123 files
+[2024-04-24 21:44:28,602] [INFO] [main] Copying manifest.json
+[2024-04-24 21:44:28,602] [INFO] [main] Copying modlist.html
+[2024-04-24 21:44:28,603] [INFO] [main] [1/123] Retrieving project information from https://api.cfwidget.com/123456
+[2024-04-24 21:44:29,129] [INFO] [main] [1/123] File Mod1-1.2.3-1.2.3-forge.jar already exists
+...
+[2024-04-24 21:45:48,715] [INFO] [main] [10/123] Retrieving project information from https://api.cfwidget.com/234567
+[2024-04-24 21:45:49,198] [INFO] [main] [10/123] Downloading https://www.curseforge.com/api/v1/mods/234567/files/8901234/download as Mod2-1.2.3-1.2.3.jar
+[2024-04-24 21:45:50,790] [WARNING] [main] [10/123] Deleting previous version Mod2-1.2.2-1.2.3.jar
+...
+[2024-04-24 21:46:04,703] [INFO] [main] Skipping file default-server.properties. Already exists
+...
+[2024-04-24 21:52:08,518] [WARNING] [main] Your config/test.properties is different from the downloaded one. Please select what to do
+
+Difference:
+---
++++
+@@ -1,2 +1,2 @@
+-test=test1
++test=test2
+
+[s]kip - keep your version | [o]verwrite - replace with downloaded | [r]ename old file by adding .old | [e]xit - cancel and exit (press s, o, r or e): s
+[2024-04-24 21:53:54,777] [INFO] [main] Skipping file config/test.properties
+...
+[2024-04-24 21:56:35,511] [INFO] [main] Downloading https://maven.minecraftforge.net/net/minecraftforge/forge/1.2.3-1.2.3/forge-1.2.3-1.2.3-installer.jar as /home/test/.minecraft/versions/DeceasedCraft/forge-1.2.3-1.2.3-installer.jar
+[2024-04-24 21:56:36,862] [INFO] [main] Forge 1.2.3 downloaded. Please run java -jar "/home/test/.minecraft/versions/DeceasedCraft/forge-1.2.3-1.2.3-installer.jar" to install client and use --installServer argument to install server
+[2024-04-24 21:56:36,863] [INFO] [main] MyTestModPack v1.2.3 downloaded
+[2024-04-24 21:56:36,863] [INFO] [main] curseforge-modpack-downloader finished
+```
+
+----------
+
+## 🕸️ Proxy
+
+If needed, you can specify proxy in `http://ip:port` format (specify `http` even if it's `https` proxy) by defining environment variables `http_proxy` and `https_proxy`. Use `http://username:password@ip:port` format in case of proxy with authorization
+
+Example:
+
+- Linux
+
+    ```shell
+    $ export http_proxy="http://user:pass@123.45.67.89:1234"
+    $ export https_proxy="http://user:pass@123.45.67.89:1234"
+
+    $ dist/curseforge-modpack-downloader-linux-x86_64-1.3.0 https://www.curseforge.com/api/v1/mods/123456/files/1234567/download /home/test/.minecraft/versions/MyTestModPack
+    [2024-04-24 21:44:26,354] [INFO] [main] curseforge-modpack-downloader v1.3.0
+    [2024-04-24 21:44:26,354] [INFO] [main] https://github.com/F33RNI/curseforge-modpack-downloader
+    [2024-04-24 21:44:26,354] [INFO] [main] Working directory: /tmp/tmpqlzg847a
+    [2024-04-24 21:44:26,354] [INFO] [open_or_download] Downloading https://www.curseforge.com/api/v1/mods/123456/files/1234567/download
+    [2024-04-24 21:44:28,328] [INFO] [unzip_modpack] Extracting archive
+    ...
+    ```
+
+- Windows
+
+    ```shell
+    > SET http_proxy=http://user:pass@123.45.67.89:1234
+    > SET https_proxy=http://user:pass@123.45.67.89:1234
+
+    > curseforge-modpack-downloader-windows-amd64-1.3.0.exe https://www.curseforge.com/api/v1/mods/123456/files/1234567/download C:\Users\Test\Downloads\Test
+    [2024-04-24 20:52:45,985] [INFO] [main] curseforge-modpack-downloader v1.3.0
+    [2024-04-24 20:52:45,985] [INFO] [main] https://github.com/F33RNI/curseforge-modpack-downloader
+    [2024-04-24 20:52:45,985] [INFO] [main] Working directory: C:\Users\Test\AppData\Local\Temp\tmpw10x21cd
+    [2024-04-24 20:52:45,985] [INFO] [open_or_download] Downloading https://www.curseforge.com/api/v1/mods/123456/files/1234567/download
+    [2024-04-24 20:52:53,517] [INFO] [unzip_modpack] Extracting archive
+    ...
+    ```
+
+----------
+
+## ✨ Contribution
+
+- Anyone can contribute! Just create a pull request
