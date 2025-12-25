@@ -37,8 +37,12 @@ pub enum CurseForgeError {
     ProjectInfoError { project_id: u64, message: String },
     #[error("Download failed after {attempts} attempts: {url}")]
     DownloadFailed { url: String, attempts: u32 },
-    #[error("All downloads have failed")]
-    AllDownloadsFailed,
+    #[error("HTTP error: {message}")]
+    HttpError { message: String },
+    #[error("File validation error: {message}")]
+    FileValidationError { message: String },
+    #[error("Task execution error: {message}")]
+    TaskError { message: String },
 }
 
 /// Read and parse CurseForge manifest.json from a zip file
@@ -230,8 +234,7 @@ pub async fn download_curseforge_files(
     
     // Wait for all downloads to complete
     for handle in handles {
-        handle.await.map_err(|e| CurseForgeError::ProjectInfoError {
-            project_id: 0,
+        handle.await.map_err(|e| CurseForgeError::TaskError {
             message: format!("Task join error: {}", e),
         })??;
     }
@@ -253,9 +256,8 @@ async fn download_file_attempt(
         .await?;
     
     if !response.status().is_success() {
-        return Err(CurseForgeError::ProjectInfoError {
-            project_id: 0,
-            message: format!("HTTP {}", response.status()),
+        return Err(CurseForgeError::HttpError {
+            message: format!("HTTP {} when downloading {}", response.status(), url),
         });
     }
     
@@ -275,9 +277,8 @@ async fn download_file_attempt(
     // Verify file size
     let metadata = tokio::fs::metadata(path).await?;
     if metadata.len() != expected_size && expected_size > 0 {
-        return Err(CurseForgeError::ProjectInfoError {
-            project_id: 0,
-            message: format!("Size mismatch: expected {}, got {}", expected_size, metadata.len()),
+        return Err(CurseForgeError::FileValidationError {
+            message: format!("Size mismatch: expected {} bytes, got {} bytes", expected_size, metadata.len()),
         });
     }
     
@@ -403,9 +404,8 @@ async fn download_simple(client: &Client, url: &str, path: &Path) -> Result<(), 
         .await?;
     
     if !response.status().is_success() {
-        return Err(CurseForgeError::ProjectInfoError {
-            project_id: 0,
-            message: format!("HTTP {} downloading {}", response.status(), url),
+        return Err(CurseForgeError::HttpError {
+            message: format!("HTTP {} when downloading {}", response.status(), url),
         });
     }
     

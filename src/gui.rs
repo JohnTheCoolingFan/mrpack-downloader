@@ -32,13 +32,7 @@ pub struct ModpackInfo {
     pub dependencies: Vec<(String, String)>,
     pub total_files: usize,
     pub total_size: u64,
-    pub format: ModpackFormat,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum ModpackFormat {
-    Modrinth,
-    CurseForge,
+    pub format: crate::schemas::ModpackFormat,
 }
 
 #[derive(Clone, Debug)]
@@ -212,8 +206,8 @@ impl MrpackDownloaderApp {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new("Format:").strong());
                     let format_text = match info.format {
-                        ModpackFormat::Modrinth => "🟢 Modrinth (.mrpack)",
-                        ModpackFormat::CurseForge => "🟧 CurseForge (.zip)",
+                        crate::schemas::ModpackFormat::Modrinth => "🟢 Modrinth (.mrpack)",
+                        crate::schemas::ModpackFormat::CurseForge => "🟧 CurseForge (.zip)",
                     };
                     ui.label(RichText::new(format_text).color(INFO_BLUE));
                 });
@@ -536,7 +530,7 @@ async fn load_modpack_info(input_file: &PathBuf) -> Result<ModpackInfo, String> 
             dependencies: deps,
             total_files: manifest.files.len(),
             total_size: 0, // CurseForge doesn't provide total size upfront
-            format: ModpackFormat::CurseForge,
+            format: crate::schemas::ModpackFormat::CurseForge,
         })
     } else if is_mr {
         // Modrinth modpack
@@ -559,7 +553,7 @@ async fn load_modpack_info(input_file: &PathBuf) -> Result<ModpackInfo, String> 
             dependencies,
             total_files: index.files.len(),
             total_size,
-            format: ModpackFormat::Modrinth,
+            format: crate::schemas::ModpackFormat::Modrinth,
         })
     } else {
         Err("Could not detect modpack format. Expected modrinth.index.json or manifest.json".to_string())
