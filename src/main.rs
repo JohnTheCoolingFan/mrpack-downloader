@@ -271,10 +271,10 @@ async fn download_file(
                 }
                 // An error occured. Report and go to the next url.
                 Err(why) => {
-                    eprintln!(
-                        "Failed to download file {} from {url}: {why}",
-                        path.to_string_lossy(),
-                    );
+                    pb.println(format!(
+                        "[Error] Faield to download file {} from {url}: {why}",
+                        path.to_string_lossy()
+                    ));
                 }
             },
             // No more urls to try.
