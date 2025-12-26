@@ -9,7 +9,7 @@ use clap::Parser;
 use dialoguer::Confirm;
 use futures_util::{TryStreamExt, stream::StreamExt};
 use hash_checks::check_hashes;
-use indicatif::{MultiProgress, ProgressBar, ProgressDrawTarget, ProgressStyle};
+use indicatif::{HumanBytes, MultiProgress, ProgressBar, ProgressDrawTarget, ProgressStyle};
 use reqwest::{Client, ClientBuilder, StatusCode};
 use schemas::{EnvRequirement, ModpackFile, ModrinthIndex};
 use thiserror::Error;
@@ -28,18 +28,6 @@ const ALLOWED_HOSTS: [&str; 4] = [
     "raw.githubusercontent.com",
     "gitlab.com",
 ];
-
-fn prettify_bytes(bytes: u64) -> String {
-    if bytes > 1024 * 1024 * 1024 {
-        format!("{:.2} GB", bytes as f64 / 1024.0 / 1024.0 / 1024.0)
-    } else if bytes > 1024 * 1024 {
-        format!("{:.2} MB", bytes as f64 / 1024.0 / 1024.0)
-    } else if bytes > 1024 {
-        format!("{:.2} KB", bytes as f64 / 1024.0)
-    } else {
-        format!("{:.2} B", bytes)
-    }
-}
 
 #[derive(Debug, Clone, Parser)]
 #[command(author, version, about, long_about = None)]
@@ -382,7 +370,7 @@ async fn main() {
 
     println!(
         "Total download size: {}",
-        prettify_bytes(
+        HumanBytes(
             modrinth_index_data
                 .files
                 .iter()
