@@ -10,7 +10,7 @@ use dialoguer::Confirm;
 use futures_util::{TryStreamExt, stream::StreamExt};
 use hash_checks::check_hashes;
 use indicatif::{MultiProgress, ProgressBar, ProgressDrawTarget, ProgressStyle};
-use reqwest::{Client, StatusCode};
+use reqwest::{Client, ClientBuilder, StatusCode};
 use schemas::{EnvRequirement, ModpackFile, ModrinthIndex};
 use thiserror::Error;
 use tokio::fs::{File, create_dir_all};
@@ -19,6 +19,8 @@ use url::Url;
 
 mod hash_checks;
 mod schemas;
+
+const USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
 
 const ALLOWED_HOSTS: [&str; 4] = [
     "cdn.modrinth.com",
@@ -151,7 +153,10 @@ async fn download_files(
     jobs: usize,
 ) -> Result<(), FileDownloadError> {
     let mpb = MultiProgress::with_draw_target(ProgressDrawTarget::stdout());
-    let client = Client::new();
+    let client = ClientBuilder::new()
+        .user_agent(USER_AGENT)
+        .build()
+        .expect("The ClientBuilder options must be valid");
     let files_stream = futures::stream::iter(index.files);
     files_stream
         .map::<Result<_, FileDownloadError>, _>(Ok)
