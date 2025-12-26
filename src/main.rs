@@ -322,18 +322,20 @@ fn filter_file_list(files: &mut Vec<ModpackFile>, is_server: bool, unattended: b
 }
 
 #[derive(Debug, Error)]
-enum IndexGetError {
+enum IndexExtractionError {
     #[error(transparent)]
     ReadError(#[from] IndexReadError),
     #[error("Failed to deserialize index file: {0}")]
     SerdeError(#[from] serde_json::Error),
 }
 
-async fn get_index_data(zip_file: &mut ZipFileReader) -> Result<ModrinthIndex, IndexGetError> {
+async fn get_index_data(
+    zip_file: &mut ZipFileReader,
+) -> Result<ModrinthIndex, IndexExtractionError> {
     let mut index_data: Vec<u8> = Vec::new();
     read_index_data(&mut index_data, zip_file).await?;
 
-    serde_json::from_slice(&index_data).map_err(Into::into)
+    Ok(serde_json::from_slice(&index_data)?)
 }
 
 #[tokio::main]
